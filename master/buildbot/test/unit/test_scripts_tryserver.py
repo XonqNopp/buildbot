@@ -14,11 +14,12 @@
 # Copyright Buildbot Team Members
 import os
 import sys
+from cStringIO import StringIO
+
+from twisted.trial import unittest
 
 from buildbot.scripts import tryserver
 from buildbot.test.util import dirs
-from cStringIO import StringIO
-from twisted.trial import unittest
 
 
 class TestStatusLog(dirs.DirsMixin, unittest.TestCase):

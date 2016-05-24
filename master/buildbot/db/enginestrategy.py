@@ -23,16 +23,18 @@ special cases that Buildbot needs.  Those include:
 
 """
 
-import migrate
 import os
 import re
-import sqlalchemy as sa
 
-from buildbot.util import sautils
+import migrate
+import sqlalchemy as sa
 from sqlalchemy.engine import strategies
 from sqlalchemy.engine import url
 from sqlalchemy.pool import NullPool
 from twisted.python import log
+
+from buildbot.util import sautils
+
 
 # from http://www.mail-archive.com/sqlalchemy@googlegroups.com/msg15079.html
 
@@ -79,7 +81,7 @@ class BuildbotEngineStrategy(strategies.ThreadLocalEngineStrategy):
         if u.database:
 
             # Use NullPool instead of the sqlalchemy-0.6.8-default
-            # SingletonThreadpool for sqlite to suppress the error in
+            # SingletonThreadPool for sqlite to suppress the error in
             # http://groups.google.com/group/sqlalchemy/msg/f8482e4721a89589,
             # which also explains that NullPool is the new default in
             # sqlalchemy 0.7 for non-memory SQLite databases.
@@ -88,6 +90,16 @@ class BuildbotEngineStrategy(strategies.ThreadLocalEngineStrategy):
             u.database = u.database % dict(basedir=kwargs['basedir'])
             if not os.path.isabs(u.database[0]):
                 u.database = os.path.join(kwargs['basedir'], u.database)
+
+        else:
+            # For in-memory database SQLAlchemy will use SingletonThreadPool
+            # and we will run connection creation and all queries in the single
+            # thread.
+            # However connection destruction will be run from the main
+            # thread, which is safe in our case, but not safe in general,
+            # so SQLite will emit warning about it.
+            # Silence that warning.
+            kwargs.setdefault('connect_args', {})['check_same_thread'] = False
 
         # in-memory databases need exactly one connection
         if not u.database:
@@ -103,19 +115,19 @@ class BuildbotEngineStrategy(strategies.ThreadLocalEngineStrategy):
 
     def set_up_sqlite_engine(self, u, engine):
         """Special setup for sqlite engines"""
+        def connect_listener_enable_fk(connection, record):
+            # fk must be enabled for all connections
+            if not getattr(engine, "fk_disabled", False):
+                return  # http://trac.buildbot.net/ticket/3490#ticket
+                # connection.execute('pragma foreign_keys=ON')
+
+        sa.event.listen(engine.pool, 'connect', connect_listener_enable_fk)
         # try to enable WAL logging
         if u.database:
             def connect_listener(connection, record):
                 connection.execute("pragma checkpoint_fullfsync = off")
 
-            if sautils.sa_version() < (0, 7, 0):
-                class CheckpointFullfsyncDisabler(object):
-                    pass
-                disabler = CheckpointFullfsyncDisabler()
-                disabler.connect = connect_listener
-                engine.pool.add_listener(disabler)
-            else:
-                sa.event.listen(engine.pool, 'connect', connect_listener)
+            sa.event.listen(engine.pool, 'connect', connect_listener)
 
             log.msg("setting database journal mode to 'wal'")
             try:
@@ -131,7 +143,7 @@ class BuildbotEngineStrategy(strategies.ThreadLocalEngineStrategy):
 
         kwargs['pool_recycle'] = int(u.query.pop('max_idle', 3600))
 
-        # default to the MyISAM storage engine; InnoDB is not supported
+        # default to the MyISAM storage engine
         storage_engine = u.query.pop('storage_engine', 'MyISAM')
         kwargs['connect_args'] = {
             'init_command': 'SET default_storage_engine=%s' % storage_engine,
@@ -217,7 +229,8 @@ class BuildbotEngineStrategy(strategies.ThreadLocalEngineStrategy):
         # calculate the maximum number of connections from the pool parameters,
         # if it hasn't already been specified
         if max_conns is None:
-            max_conns = kwargs.get('pool_size', 5) + kwargs.get('max_overflow', 10)
+            max_conns = kwargs.get(
+                'pool_size', 5) + kwargs.get('max_overflow', 10)
 
         engine = strategies.ThreadLocalEngineStrategy.create(self,
                                                              u, **kwargs)

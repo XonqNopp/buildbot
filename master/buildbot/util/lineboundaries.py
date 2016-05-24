@@ -12,7 +12,6 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import re
 
 from twisted.internet import defer
@@ -45,9 +44,9 @@ class LineBoundaryFinder(object):
                     self.partialLine = text
                     return defer.succeed(None)
             return self.callback(text)
+        return defer.succeed(None)
 
     def flush(self):
         if self.partialLine:
             return self.append('\n')
-        else:
-            return defer.succeed(None)
+        return defer.succeed(None)

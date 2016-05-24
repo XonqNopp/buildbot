@@ -13,15 +13,15 @@
 #
 # Copyright Buildbot Team Members
 
+from twisted.internet import defer
+from twisted.internet import reactor
+from twisted.python import log
+
 from buildbot.data import base
 from buildbot.data import resultspec
 from buildbot.data import types
 from buildbot.process.results import RETRY
 from buildbot.util import epoch2datetime
-from twisted.internet import defer
-from twisted.internet import reactor
-from twisted.python import log
-
 
 # time, in minutes, after which a master that hasn't checked in will be
 # marked as inactive
@@ -136,7 +136,7 @@ class Master(base.ResourceType):
         log.msg("doing housekeeping for master %d %s" % (masterid, name))
 
         # common code for deactivating a master
-        yield self.master.data.rtypes.buildslave._masterDeactivated(
+        yield self.master.data.rtypes.worker._masterDeactivated(
             masterid=masterid)
         yield self.master.data.rtypes.builder._masterDeactivated(
             masterid=masterid)

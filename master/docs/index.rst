@@ -1,8 +1,8 @@
-.. ==================================
-   Buildbot Documentation - |version|
-   ==================================
+.. ======================================
+   Buildbot Documentation - ``|version|``
+   ======================================
 
-This is the Buildbot documentation for Buildbot version |version|.
+This is the Buildbot documentation for Buildbot version ``|version|``.
 
 If you are evaluating Buildbot and would like to get started quickly, start
 with the :doc:`Tutorial <tutorial/index>`.  Regular users of Buildbot should
@@ -15,6 +15,7 @@ Table Of Contents
 
 .. toctree::
    :maxdepth: 2
+   :numbered: 4
 
    tutorial/index
    manual/index

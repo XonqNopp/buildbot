@@ -12,19 +12,18 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+from posixpath import join
 
+import requests
 from future.moves.urllib.parse import parse_qs
 from future.moves.urllib.parse import urlencode
 from future.utils import iteritems
-
-import requests
+from twisted.internet import defer
+from twisted.internet import threads
 
 from buildbot.util import json
 from buildbot.www import auth
 from buildbot.www import resource
-from posixpath import join
-from twisted.internet import defer
-from twisted.internet import threads
 
 
 class OAuth2LoginResource(auth.LoginResource):
@@ -114,9 +113,11 @@ class OAuth2Auth(auth.AuthBase):
         return ret.json()
 
     # based on https://github.com/maraujop/requests-oauth
-    # from Miguel Araujo, augmented to support header based clientSecret passing
+    # from Miguel Araujo, augmented to support header based clientSecret
+    # passing
     def verifyCode(self, code):
-        def thd():  # everything in deferToThread is not counted with trial  --coverage :-(
+        # everything in deferToThread is not counted with trial  --coverage :-(
+        def thd():
             url = self.tokenUri
             data = {'redirect_uri': self.loginUri, 'code': code,
                     'grant_type': self.grantType}
@@ -124,9 +125,11 @@ class OAuth2Auth(auth.AuthBase):
             if self.getTokenUseAuthHeaders:
                 auth = (self.clientId, self.clientSecret)
             else:
-                data.update({'client_id': self.clientId, 'client_secret': self.clientSecret})
+                data.update(
+                    {'client_id': self.clientId, 'client_secret': self.clientSecret})
             data.update(self.tokenUriAdditionalParams)
-            response = requests.post(url, data=data, auth=auth, verify=self.sslVerify)
+            response = requests.post(
+                url, data=data, auth=auth, verify=self.sslVerify)
             response.raise_for_status()
             if isinstance(response.content, basestring):
                 try:
@@ -179,3 +182,24 @@ class GitHubAuth(OAuth2Auth):
                     email=user['email'],
                     username=user['login'],
                     groups=[org['login'] for org in orgs])
+
+
+class GitLabAuth(OAuth2Auth):
+    name = "GitLab"
+    faIcon = "fa-git"
+
+    def __init__(self, instanceUri, clientId, clientSecret, **kwargs):
+        uri = instanceUri.rstrip("/")
+        self.authUri = "%s/oauth/authorize" % uri
+        self.tokenUri = "%s/oauth/token" % uri
+        self.resourceEndpoint = "%s/api/v3" % uri
+        super(GitLabAuth, self).__init__(clientId, clientSecret, **kwargs)
+
+    def getUserInfoFromOAuthClient(self, c):
+        user = self.get(c, "/user")
+        groups = self.get(c, "/groups")
+        return dict(full_name=user["name"],
+                    username=user["username"],
+                    email=user["email"],
+                    avatar_url=user["avatar_url"],
+                    groups=[g["path"] for g in groups])

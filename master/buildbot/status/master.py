@@ -12,12 +12,14 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+import os
 
 from future.moves.urllib.parse import quote as urlquote
 from future.utils import iteritems
 from future.utils import itervalues
-
-import os
+from twisted.internet import defer
+from twisted.python import log
+from zope.interface import implements
 
 from buildbot import interfaces
 from buildbot import util
@@ -26,13 +28,8 @@ from buildbot.status import builder
 from buildbot.status import buildrequest
 from buildbot.status import buildset
 from buildbot.util import bbcollections
-from buildbot.util import pickle
 from buildbot.util import service
 from buildbot.util.eventual import eventually
-from twisted.internet import defer
-from twisted.persisted import styles
-from twisted.python import log
-from zope.interface import implements
 
 
 class Status(service.ReconfigurableServiceMixin, service.AsyncMultiService):
@@ -57,8 +54,8 @@ class Status(service.ReconfigurableServiceMixin, service.AsyncMultiService):
         return self.master.botmaster
 
     @property
-    def buildslaves(self):
-        return self.master.buildslaves
+    def workers(self):
+        return self.master.workers
 
     @property
     def basedir(self):
@@ -189,11 +186,11 @@ class Status(service.ReconfigurableServiceMixin, service.AsyncMultiService):
                 urlquote(step.getName(), safe=''))
         # IBuildSetStatus
         # IBuildRequestStatus
-        # ISlaveStatus
-        if interfaces.ISlaveStatus.providedBy(thing):
-            slave = thing
+        # IWorkerStatus
+        if interfaces.IWorkerStatus.providedBy(thing):
+            worker = thing
             return prefix + "#buildslaves/%s" % (
-                urlquote(slave.getName(), safe=''),
+                urlquote(worker.getName(), safe=''),
             )
 
         # IStatusEvent
@@ -226,7 +223,8 @@ class Status(service.ReconfigurableServiceMixin, service.AsyncMultiService):
             tags = categories
 
         if tags is None:
-            return util.naturalSort(self.botmaster.builderNames)  # don't let them break it
+            # don't let them break it
+            return util.naturalSort(self.botmaster.builderNames)
 
         l = []
         # respect addition order
@@ -242,11 +240,11 @@ class Status(service.ReconfigurableServiceMixin, service.AsyncMultiService):
         """
         return self.botmaster.builders[name].builder_status
 
-    def getSlaveNames(self):
-        return list(iteritems(self.buildslaves.slaves))
+    def getWorkerNames(self):
+        return list(iteritems(self.workers.workers))
 
-    def getSlave(self, slavename):
-        return self.buildslaves.slaves[slavename].slave_status
+    def getWorker(self, workername):
+        return self.workers.workers[workername].worker_status
 
     def getBuildSets(self):
         d = self.master.db.buildsets.getBuildsets(complete=False)
@@ -340,36 +338,8 @@ class Status(service.ReconfigurableServiceMixin, service.AsyncMultiService):
         """
         @rtype: L{BuilderStatus}
         """
-        filename = os.path.join(self.basedir, basedir, "builder")
-        log.msg("trying to load status pickle from %s" % filename)
-        builder_status = None
-        try:
-            with open(filename, "rb") as f:
-                builder_status = pickle.load(f)
-            builder_status.master = self.master
-
-            # (bug #1068) if we need to upgrade, we probably need to rewrite
-            # this pickle, too.  We determine this by looking at the list of
-            # Versioned objects that have been unpickled, and (after doUpgrade)
-            # checking to see if any of them set wasUpgraded.  The Versioneds'
-            # upgradeToVersionNN methods all set this.
-            versioneds = styles.versionedsToUpgrade
-            styles.doUpgrade()
-            if True in [hasattr(o, 'wasUpgraded') for o in itervalues(versioneds)]:
-                log.msg("re-writing upgraded builder pickle")
-                builder_status.saveYourself()
-
-        except IOError:
-            log.msg("no saved status pickle, creating a new one")
-        except Exception:
-            log.err("error while loading status pickle, creating a new one")
-        if not builder_status:
-            builder_status = builder.BuilderStatus(name, tags, self.master,
-                                                   description)
-            builder_status.addPointEvent(["builder", "created"])
-        log.msg("added builder %s with tags %r" % (name, tags))
-        # an unpickled object might not have tags set from before,
-        # so set it here to make sure
+        builder_status = builder.BuilderStatus(name, tags, self.master,
+                                               description)
         builder_status.setTags(tags)
         builder_status.description = description
         builder_status.master = self.master
@@ -377,15 +347,7 @@ class Status(service.ReconfigurableServiceMixin, service.AsyncMultiService):
         builder_status.name = name  # it might have been updated
         builder_status.status = self
 
-        if not os.path.isdir(builder_status.basedir):
-            os.makedirs(builder_status.basedir)
-        builder_status.determineNextBuildNumber()
-
         builder_status.setBigState("offline")
-
-        for t in self.watchers:
-            self.announceNewBuilder(t, name, builder_status)
-
         return builder_status
 
     def builderRemoved(self, name):
@@ -393,25 +355,25 @@ class Status(service.ReconfigurableServiceMixin, service.AsyncMultiService):
             if hasattr(t, 'builderRemoved'):
                 t.builderRemoved(name)
 
-    def slaveConnected(self, name):
+    def workerConnected(self, name):
         for t in self.watchers:
-            if hasattr(t, 'slaveConnected'):
-                t.slaveConnected(name)
+            if hasattr(t, 'workerConnected'):
+                t.workerConnected(name)
 
-    def slaveDisconnected(self, name):
+    def workerDisconnected(self, name):
         for t in self.watchers:
-            if hasattr(t, 'slaveDisconnected'):
-                t.slaveDisconnected(name)
+            if hasattr(t, 'workerDisconnected'):
+                t.workerDisconnected(name)
 
-    def slavePaused(self, name):
+    def workerPaused(self, name):
         for t in self.watchers:
-            if hasattr(t, 'slavePaused'):
-                t.slavePaused(name)
+            if hasattr(t, 'workerPaused'):
+                t.workerPaused(name)
 
-    def slaveUnpaused(self, name):
+    def workerUnpaused(self, name):
         for t in self.watchers:
-            if hasattr(t, 'slaveUnpaused'):
-                t.slaveUnpaused(name)
+            if hasattr(t, 'workerUnpaused'):
+                t.workerUnpaused(name)
 
     def changeAdded(self, change):
         for t in self.watchers:

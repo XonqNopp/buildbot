@@ -13,9 +13,9 @@
 #
 # Copyright Buildbot Team Members
 
-import os
+from __future__ import print_function
 
-from twisted.python import log
+import os
 
 from buildslave.scripts import base
 
@@ -32,8 +32,8 @@ def upgradeSlave(config):
         "from buildslave.bot import BuildSlave")
     if new_buildbot_tac != buildbot_tac:
         open(os.path.join(basedir, "buildbot.tac"), "w").write(new_buildbot_tac)
-        log.msg("buildbot.tac updated")
+        print("buildbot.tac updated")
     else:
-        log.msg("No changes made")
+        print("No changes made")
 
     return 0

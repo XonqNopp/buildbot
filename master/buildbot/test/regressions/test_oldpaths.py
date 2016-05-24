@@ -12,9 +12,9 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+from twisted.trial import unittest
 
 from buildbot.util import pickle
-from twisted.trial import unittest
 
 
 def deprecatedImport(fn):
@@ -121,10 +121,6 @@ class OldImportPaths(unittest.TestCase):
     def test_status_builder_BuildSetStatus(self):
         from buildbot.status.builder import BuildSetStatus
         assert BuildSetStatus
-
-    def test_status_builder_SlaveStatus(self):
-        from buildbot.status.builder import SlaveStatus
-        assert SlaveStatus
 
     def test_status_builder_Status(self):
         from buildbot.status.builder import Status

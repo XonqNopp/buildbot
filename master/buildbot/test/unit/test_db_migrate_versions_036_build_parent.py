@@ -12,15 +12,14 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+import datetime
 
 import sqlalchemy as sa
-
-import datetime
+from twisted.trial import unittest
 
 from buildbot.test.util import migration
 from buildbot.util import datetime2epoch
 from buildbot.util import sautils
-from twisted.trial import unittest
 
 
 class Migration(migration.MigrateTestMixin, unittest.TestCase):
@@ -47,7 +46,7 @@ class Migration(migration.MigrateTestMixin, unittest.TestCase):
                 sa.Column('buildrequestid', sa.Integer, nullable=False),
                 # slave which performed this build
                 # TODO: ForeignKey to buildslaves table, named buildslaveid
-                # TODO: keep nullable to support slave-free
+                # TODO: keep nullable to support worker-free
                 # builds
                 sa.Column('buildslaveid', sa.Integer),
                 # master which controlled this build

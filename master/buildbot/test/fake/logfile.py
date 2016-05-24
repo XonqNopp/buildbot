@@ -13,11 +13,11 @@
 #
 # Copyright Buildbot Team Members
 from future.utils import itervalues
+from twisted.internet import defer
+from twisted.python import log
 
 from buildbot import util
 from buildbot.util import lineboundaries
-from twisted.internet import defer
-from twisted.python import log
 
 
 class FakeLogFile(object):
@@ -82,6 +82,7 @@ class FakeLogFile(object):
     def finish(self):
         self.flushFakeLogfile()
         self.finished = True
+        return defer.succeed(None)
 
     def fakeData(self, header='', stdout='', stderr=''):
         if header:

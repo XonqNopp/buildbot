@@ -13,19 +13,27 @@
 #
 # Copyright Buildbot Team Members
 from __future__ import print_function
-from builtins import str
 
 import base64
 import binascii
 import os
 import types
+from builtins import str
 
 from twisted.application import strports
 from twisted.conch import manhole
 from twisted.conch import telnet
+from twisted.conch.insults import insults
 from twisted.cred import checkers
 from twisted.cred import portal
+from twisted.internet import protocol
 from twisted.python import log
+from zope.interface import implements  # requires Twisted-2.0 or later
+
+from buildbot import config
+from buildbot.util import ComparableMixin
+from buildbot.util import service
+
 try:
     from twisted.conch import checkers as conchc, manhole_ssh
     _hush_pyflakes = [manhole_ssh, conchc]
@@ -33,13 +41,7 @@ try:
 except ImportError:
     manhole_ssh = None
     conchc = None
-from twisted.conch.insults import insults
-from twisted.internet import protocol
 
-from buildbot import config
-from buildbot.util import ComparableMixin
-from buildbot.util import service
-from zope.interface import implements  # requires Twisted-2.0 or later
 
 # makeTelnetProtocol and _TelnetRealm are for the TelnetManhole
 
@@ -98,7 +100,8 @@ if conchc:
         """
 
         def __init__(self, authorized_keys_file):
-            self.authorized_keys_file = os.path.expanduser(authorized_keys_file)
+            self.authorized_keys_file = os.path.expanduser(
+                authorized_keys_file)
 
         def checkKey(self, credentials):
             with open(self.authorized_keys_file) as f:
@@ -200,7 +203,7 @@ class TelnetManhole(_BaseManhole, ComparableMixin):
     username and password authorize access. You are encouraged to use the
     encrypted ssh-based manhole classes instead."""
 
-    compare_attrs = ["port", "username", "password"]
+    compare_attrs = ("port", "username", "password")
 
     def __init__(self, port, username, password):
         """
@@ -230,7 +233,7 @@ class PasswordManhole(_BaseManhole, ComparableMixin):
     username and password to authorize access.
     """
 
-    compare_attrs = ["port", "username", "password"]
+    compare_attrs = ("port", "username", "password")
 
     def __init__(self, port, username, password):
         """
@@ -263,7 +266,7 @@ class AuthorizedKeysManhole(_BaseManhole, ComparableMixin):
     keys in our authorized_keys file. It is created with the name of a file
     that contains the public keys that we will accept."""
 
-    compare_attrs = ["port", "keyfile"]
+    compare_attrs = ("port", "keyfile")
 
     def __init__(self, port, keyfile):
         """
@@ -294,7 +297,7 @@ class ArbitraryCheckerManhole(_BaseManhole, ComparableMixin):
     """This Manhole accepts ssh connections, but uses an arbitrary
     user-supplied 'checker' object to perform authentication."""
 
-    compare_attrs = ["port", "checker"]
+    compare_attrs = ("port", "checker")
 
     def __init__(self, port, checker):
         """

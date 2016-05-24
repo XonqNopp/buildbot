@@ -12,11 +12,10 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
-from hashlib import sha1
 import hmac
 import logging
 import re
+from hashlib import sha1
 
 from dateutil.parser import parse as dateparse
 from twisted.python import log
@@ -27,12 +26,14 @@ try:
 except ImportError:
     import simplejson as json
 
+
 _HEADER_CT = 'Content-Type'
 _HEADER_EVENT = 'X-GitHub-Event'
 _HEADER_SIGNATURE = 'X-Hub-Signature'
 
 
 class GitHubEventHandler(object):
+
     def __init__(self, secret, strict, codebase=None):
         self._secret = secret
         self._strict = strict
@@ -99,7 +100,7 @@ class GitHubEventHandler(object):
         user = None
         # user = payload['pusher']['name']
         repo = payload['repository']['name']
-        repo_url = payload['repository']['url']
+        repo_url = payload['repository']['html_url']
         # NOTE: what would be a reasonable value for project?
         # project = request.args.get('project', [''])[0]
         project = payload['repository']['full_name']
@@ -128,7 +129,8 @@ class GitHubEventHandler(object):
             'when_timestamp': dateparse(payload['pull_request']['created_at']),
             'branch': refname,
             'revlink': payload['pull_request']['_links']['html']['href'],
-            'repository': payload['repository']['clone_url'],
+            'repository': payload['repository']['html_url'],
+            'project': payload['pull_request']['base']['repo']['full_name'],
             'category': 'pull',
             # TODO: Get author name based on login id using txgithub module
             'author': payload['sender']['login'],

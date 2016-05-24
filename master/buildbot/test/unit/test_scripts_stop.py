@@ -16,15 +16,17 @@ import os
 import signal
 import time
 
+from twisted.trial import unittest
+
 from buildbot.scripts import stop
 from buildbot.test.util import dirs
 from buildbot.test.util import misc
 from buildbot.test.util.decorators import skipUnlessPlatformIs
-from twisted.trial import unittest
 
 
 def mkconfig(**kwargs):
     config = dict(quiet=False, clean=False, basedir=os.path.abspath('basedir'))
+    config['no-wait'] = kwargs.pop('no_wait', False)
     config.update(kwargs)
     return config
 
@@ -68,13 +70,13 @@ class TestStop(misc.StdoutAssertionsMixin, dirs.DirsMixin, unittest.TestCase):
 
     @skipUnlessPlatformIs('posix')
     def test_stop_not_running(self):
-        rv = self.do_test_stop(mkconfig(), [], is_running=False)
+        rv = self.do_test_stop(mkconfig(no_wait=True), [], is_running=False)
         self.assertInStdout('not running')
         self.assertEqual(rv, 0)
 
     @skipUnlessPlatformIs('posix')
     def test_stop_dead_but_pidfile_remains(self):
-        rv = self.do_test_stop(mkconfig(),
+        rv = self.do_test_stop(mkconfig(no_wait=True),
                                [(signal.SIGTERM, OSError(3, 'No such process'))])
         self.assertEqual(rv, 0)
         self.assertFalse(os.path.exists(os.path.join('basedir', 'twistd.pid')))
@@ -82,7 +84,7 @@ class TestStop(misc.StdoutAssertionsMixin, dirs.DirsMixin, unittest.TestCase):
 
     @skipUnlessPlatformIs('posix')
     def test_stop_dead_but_pidfile_remains_quiet(self):
-        rv = self.do_test_stop(mkconfig(quiet=True),
+        rv = self.do_test_stop(mkconfig(quiet=True, no_wait=True),
                                [(signal.SIGTERM, OSError(3, 'No such process'))],)
         self.assertEqual(rv, 0)
         self.assertFalse(os.path.exists(os.path.join('basedir', 'twistd.pid')))
@@ -90,15 +92,16 @@ class TestStop(misc.StdoutAssertionsMixin, dirs.DirsMixin, unittest.TestCase):
 
     @skipUnlessPlatformIs('posix')
     def test_stop_dead_but_pidfile_remains_wait(self):
-        rv = self.do_test_stop(mkconfig(),
-                               [(signal.SIGTERM, OSError(3, 'No such process'))],
+        rv = self.do_test_stop(mkconfig(no_wait=True),
+                               [(signal.SIGTERM, OSError(3, 'No such process'))
+                                ],
                                wait=True)
         self.assertEqual(rv, 0)
         self.assertFalse(os.path.exists(os.path.join('basedir', 'twistd.pid')))
 
     @skipUnlessPlatformIs('posix')
     def test_stop_slow_death_wait(self):
-        rv = self.do_test_stop(mkconfig(), [
+        rv = self.do_test_stop(mkconfig(no_wait=True), [
             (signal.SIGTERM, None),
             ('sleep', 0.1),
             (0, None),  # polling..
@@ -115,7 +118,7 @@ class TestStop(misc.StdoutAssertionsMixin, dirs.DirsMixin, unittest.TestCase):
 
     @skipUnlessPlatformIs('posix')
     def test_stop_slow_death_wait_timeout(self):
-        rv = self.do_test_stop(mkconfig(), [
+        rv = self.do_test_stop(mkconfig(no_wait=True), [
             (signal.SIGTERM, None),
             ('sleep', 0.1), ] +
             [(0, None),
@@ -125,8 +128,19 @@ class TestStop(misc.StdoutAssertionsMixin, dirs.DirsMixin, unittest.TestCase):
         self.assertEqual(rv, 1)
 
     @skipUnlessPlatformIs('posix')
+    def test_stop_slow_death_config_wait_timeout(self):
+        rv = self.do_test_stop(mkconfig(), [
+            (signal.SIGTERM, None),
+            ('sleep', 0.1), ] +
+            [(0, None),
+             ('sleep', 1), ] * 10,
+        )
+        self.assertInStdout('never saw process')
+        self.assertEqual(rv, 1)
+
+    @skipUnlessPlatformIs('posix')
     def test_stop_clean(self):
-        rv = self.do_test_stop(mkconfig(clean=True), [
+        rv = self.do_test_stop(mkconfig(clean=True, no_wait=True), [
             (signal.SIGUSR1, None), ], wait=False)
         self.assertInStdout('sent SIGUSR1 to process')
         self.assertEqual(rv, 0)

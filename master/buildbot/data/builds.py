@@ -46,7 +46,7 @@ class Db2DataMixin(object):
             'number': dbdict['number'],
             'builderid': dbdict['builderid'],
             'buildrequestid': dbdict['buildrequestid'],
-            'buildslaveid': dbdict['buildslaveid'],
+            'workerid': dbdict['workerid'],
             'masterid': dbdict['masterid'],
             'started_at': dbdict['started_at'],
             'complete_at': dbdict['complete_at'],
@@ -78,14 +78,16 @@ class BuildEndpoint(Db2DataMixin, base.Endpoint):
         data = yield self.db2data(dbdict) if dbdict else None
         # In some cases, data could be None
         if data:
-            filters = resultSpec.popProperties() if hasattr(resultSpec, 'popProperties') else []
+            filters = resultSpec.popProperties() if hasattr(
+                resultSpec, 'popProperties') else []
             # Avoid to request DB for Build's properties if not specified
             if filters:  # pragma: no cover
                 try:
                     props = yield self.master.db.builds.getBuildProperties(data['buildid'])
                 except (KeyError, TypeError):
                     props = {}
-                filtered_properties = self._generate_filtered_properties(props, filters)
+                filtered_properties = self._generate_filtered_properties(
+                    props, filters)
                 if filtered_properties:
                     data['properties'] = filtered_properties
         defer.returnValue(data)
@@ -111,7 +113,8 @@ class BuildEndpoint(Db2DataMixin, base.Endpoint):
 
     @defer.inlineCallbacks
     def actionRebuild(self, args, kwargs):
-        # we use the self.get and not self.data.get to be able to support all the pathPatterns of this endpoint
+        # we use the self.get and not self.data.get to be able to support all
+        # the pathPatterns of this endpoint
         build = yield self.get(ResultSpec(), kwargs)
         buildrequest = yield self.master.data.get(('buildrequests', build['buildrequestid']))
         res = yield self.master.data.updates.rebuildBuildrequest(buildrequest)
@@ -125,7 +128,7 @@ class BuildsEndpoint(Db2DataMixin, base.Endpoint):
         /builds
         /builders/n:builderid/builds
         /buildrequests/n:buildrequestid/builds
-        /buildslaves/n:buildslaveid/builds
+        /workers/n:workerid/builds
     """
     rootLinkName = 'builds'
 
@@ -134,10 +137,11 @@ class BuildsEndpoint(Db2DataMixin, base.Endpoint):
         # following returns None if no filter
         # true or false, if there is a complete filter
         complete = resultSpec.popBooleanFilter("complete")
+        buildrequestid = resultSpec.popIntegerFilter("buildrequestid")
         builds = yield self.master.db.builds.getBuilds(
             builderid=kwargs.get('builderid'),
-            buildrequestid=kwargs.get('buildrequestid'),
-            buildslaveid=kwargs.get('buildslaveid'),
+            buildrequestid=kwargs.get('buildrequestid', buildrequestid),
+            workerid=kwargs.get('workerid'),
             complete=complete)
         # returns properties' list
         filters = resultSpec.popProperties()
@@ -147,7 +151,8 @@ class BuildsEndpoint(Db2DataMixin, base.Endpoint):
             # Avoid to request DB for Build's properties if not specified
             if filters:  # pragma: no cover
                 props = yield self.master.db.builds.getBuildProperties(b['id'])
-                filtered_properties = self._generate_filtered_properties(props, filters)
+                filtered_properties = self._generate_filtered_properties(
+                    props, filters)
                 if filtered_properties:
                     data['properties'] = filtered_properties
             buildscol.append(data)
@@ -159,11 +164,11 @@ class Build(base.ResourceType):
     name = "build"
     plural = "builds"
     endpoints = [BuildEndpoint, BuildsEndpoint]
-    keyFields = ['builderid', 'buildid', 'buildslaveid']
+    keyFields = ['builderid', 'buildid', 'workerid']
     eventPathPatterns = """
         /builders/:builderid/builds/:number
         /builds/:buildid
-        /buildslaves/:buildslaveid/builds/:buildid
+        /workers/:workerid/builds/:buildid
     """
 
     class EntityType(types.Entity):
@@ -171,7 +176,7 @@ class Build(base.ResourceType):
         number = types.Integer()
         builderid = types.Integer()
         buildrequestid = types.Integer()
-        buildslaveid = types.Integer()
+        workerid = types.Integer()
         masterid = types.Integer()
         started_at = types.DateTime()
         complete = types.Boolean()
@@ -189,11 +194,11 @@ class Build(base.ResourceType):
 
     @base.updateMethod
     @defer.inlineCallbacks
-    def addBuild(self, builderid, buildrequestid, buildslaveid):
+    def addBuild(self, builderid, buildrequestid, workerid):
         res = yield self.master.db.builds.addBuild(
             builderid=builderid,
             buildrequestid=buildrequestid,
-            buildslaveid=buildslaveid,
+            workerid=workerid,
             masterid=self.master.masterid,
             state_string=u'created')
         defer.returnValue(res)

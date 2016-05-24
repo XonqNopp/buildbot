@@ -12,14 +12,14 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import os
+
+from twisted.internet import defer
+from twisted.trial import unittest
 
 from buildbot.changes import hgpoller
 from buildbot.test.util import changesource
 from buildbot.test.util import gpo
-from twisted.internet import defer
-from twisted.trial import unittest
 
 ENVIRON_2116_KEY = 'TEST_THAT_ENVIRONMENT_GETS_PASSED_TO_SUBPROCESSES'
 
@@ -72,10 +72,12 @@ class TestHgPoller(gpo.GetProcessOutputMixin,
         self.assertSubstring("HgPoller", self.poller.describe())
 
     def test_name(self):
-        self.assertEqual("%s[%s]" % (self.remote_repo, self.branch), self.poller.name)
+        self.assertEqual(
+            "%s[%s]" % (self.remote_repo, self.branch), self.poller.name)
 
         # and one with explicit name...
-        other = hgpoller.HgPoller(self.remote_repo, name="MyName", workdir='/some/dir')
+        other = hgpoller.HgPoller(
+            self.remote_repo, name="MyName", workdir='/some/dir')
         self.assertEqual("MyName", other.name)
 
     def test_hgbin_default(self):
@@ -92,7 +94,8 @@ class TestHgPoller(gpo.GetProcessOutputMixin,
             gpo.Expect('hg', 'pull', '-b', 'default',
                        'ssh://example.com/foo/baz')
             .path('/some/dir'),
-            gpo.Expect('hg', 'heads', 'default', '--template={rev}' + os.linesep)
+            gpo.Expect(
+                'hg', 'heads', 'default', '--template={rev}' + os.linesep)
             .path('/some/dir').stdout("73591"),
             gpo.Expect('hg', 'log', '-b', 'default', '-r', '73591:73591',  # only fetches that head
                        '--template={rev}:{node}\\n')
@@ -102,7 +105,8 @@ class TestHgPoller(gpo.GetProcessOutputMixin,
             .path('/some/dir').stdout(os.linesep.join([
                 '1273258100.0 -7200',
                 'Bob Test <bobtest@example.org>',
-                'file1 with spaces' + os.pathsep + os.path.join('dir with spaces', 'file2') + os.pathsep,
+                'file1 with spaces' + os.pathsep +
+                os.path.join('dir with spaces', 'file2') + os.pathsep,
                 'This is rev 73591',
                 ''])),
         )
@@ -119,7 +123,8 @@ class TestHgPoller(gpo.GetProcessOutputMixin,
             self.assertEqual(change['author'],
                              'Bob Test <bobtest@example.org>')
             self.assertEqual(change['when_timestamp'], 1273258100),
-            self.assertEqual(change['files'], ['file1 with spaces', os.path.join('dir with spaces', 'file2')])
+            self.assertEqual(
+                change['files'], ['file1 with spaces', os.path.join('dir with spaces', 'file2')])
             self.assertEqual(change['src'], 'hg')
             self.assertEqual(change['branch'], 'default')
             self.assertEqual(change['comments'], 'This is rev 73591')
@@ -143,7 +148,8 @@ class TestHgPoller(gpo.GetProcessOutputMixin,
             gpo.Expect('hg', 'pull', '-b', 'default',
                        'ssh://example.com/foo/baz')
             .path('/some/dir'),
-            gpo.Expect('hg', 'heads', 'default', '--template={rev}' + os.linesep)
+            gpo.Expect(
+                'hg', 'heads', 'default', '--template={rev}' + os.linesep)
             .path('/some/dir').stdout('5' + os.linesep + '6' + os.linesep),
         )
 
@@ -160,7 +166,8 @@ class TestHgPoller(gpo.GetProcessOutputMixin,
             gpo.Expect('hg', 'pull', '-b', 'default',
                        'ssh://example.com/foo/baz')
             .path('/some/dir'),
-            gpo.Expect('hg', 'heads', 'default', '--template={rev}' + os.linesep)
+            gpo.Expect(
+                'hg', 'heads', 'default', '--template={rev}' + os.linesep)
             .path('/some/dir').stdout('5' + os.linesep),
             gpo.Expect('hg', 'log', '-b', 'default', '-r', '5:5',
                        '--template={rev}:{node}\\n')

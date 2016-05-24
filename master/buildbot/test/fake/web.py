@@ -12,10 +12,9 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 from StringIO import StringIO
-from mock import Mock
 
+from mock import Mock
 from twisted.internet import defer
 from twisted.web import server
 
@@ -25,6 +24,8 @@ def fakeMasterForHooks():
     master.addedChanges = []
 
     def addChange(**kwargs):
+        if 'isdir' in kwargs or 'is_dir' in kwargs:
+            return defer.fail(AttributeError('isdir/is_dir is not accepted'))
         master.addedChanges.append(kwargs)
         return defer.succeed(Mock())
     master.addChange = addChange

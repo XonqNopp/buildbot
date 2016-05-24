@@ -12,14 +12,14 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import gc
 import sys
 
-from buildbot.process import metrics
-from buildbot.test.fake import fakemaster
 from twisted.internet import task
 from twisted.trial import unittest
+
+from buildbot.process import metrics
+from buildbot.test.fake import fakemaster
 
 
 class TestMetricBase(unittest.TestCase):
@@ -129,7 +129,8 @@ class TestMetricTimeEvent(TestMetricBase):
         for i in data:
             metrics.MetricTimeEvent.log('foo_time', i)
         report = self.observer.asDict()
-        self.assertEquals(report['timers']['foo_time'], sum(data) / float(len(data)))
+        self.assertEquals(
+            report['timers']['foo_time'], sum(data) / float(len(data)))
 
 
 class TestPeriodicChecks(TestMetricBase):
@@ -164,7 +165,7 @@ class TestPeriodicChecks(TestMetricBase):
         self.assertEquals(report['alarms']['gc.garbage'][0], 'WARN')
 
     def testGetRSS(self):
-        self.assert_(metrics._get_rss() > 0)
+        self.assertTrue(metrics._get_rss() > 0)
     if sys.platform != 'linux2':
         testGetRSS.skip = "only available on linux2 platforms"
 
@@ -182,13 +183,13 @@ class TestReconfig(TestMetricBase):
         # enable log_interval
         new_config.metrics = dict(log_interval=10, periodic_interval=0)
         observer.reconfigServiceWithBuildbotConfig(new_config)
-        self.assert_(observer.log_task)
+        self.assertTrue(observer.log_task)
         self.assertEquals(observer.periodic_task, None)
 
         # disable that and enable periodic_interval
         new_config.metrics = dict(periodic_interval=10, log_interval=0)
         observer.reconfigServiceWithBuildbotConfig(new_config)
-        self.assert_(observer.periodic_task)
+        self.assertTrue(observer.periodic_task)
         self.assertEquals(observer.log_task, None)
 
         # Make the periodic check run
@@ -210,8 +211,8 @@ class TestReconfig(TestMetricBase):
         # enable both
         new_config.metrics = dict(periodic_interval=10, log_interval=10)
         observer.reconfigServiceWithBuildbotConfig(new_config)
-        self.assert_(observer.log_task)
-        self.assert_(observer.periodic_task)
+        self.assertTrue(observer.log_task)
+        self.assertTrue(observer.periodic_task)
 
         # (service will be stopped by tearDown)
 
@@ -243,7 +244,9 @@ class TestReports(unittest.TestCase):
 
     def testMetricAlarmReport(self):
         handler = metrics.MetricAlarmHandler(None)
-        handler.handle({}, metrics.MetricAlarmEvent('alarm_foo', msg='Uh oh', level=metrics.ALARM_WARN))
+        handler.handle({}, metrics.MetricAlarmEvent(
+            'alarm_foo', msg='Uh oh', level=metrics.ALARM_WARN))
 
         self.assertEquals("WARN alarm_foo: Uh oh", handler.report())
-        self.assertEquals({"alarms": {"alarm_foo": ("WARN", "Uh oh")}}, handler.asDict())
+        self.assertEquals(
+            {"alarms": {"alarm_foo": ("WARN", "Uh oh")}}, handler.asDict())

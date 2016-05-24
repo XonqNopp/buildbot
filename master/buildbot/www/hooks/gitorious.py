@@ -12,9 +12,8 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
+#
 # note: this file is based on github.py
-
 import re
 
 from dateutil.parser import parse as dateparse

@@ -27,7 +27,7 @@ described in :ref:`developer-Reconfiguration`.
     - removing those concerns from other parts of Buildbot.
 
     This class may be instantiated directly, creating an entirely default
-    configuration, or via :py:meth:`loadConfig`, which will load the
+    configuration, or via :py:meth:`FileLoader.loadConfig`, which will load the
     configuration from a config file.
 
     The following attributes are available from this class, representing the
@@ -106,7 +106,7 @@ described in :ref:`developer-Reconfiguration`.
 
     .. py:attribute:: protocols
 
-        The per-protocol port specification for slave connections.
+        The per-protocol port specification for worker connections.
         Based on :bb:cfg:`protocols`.
 
     .. py:attribute:: multiMaster
@@ -155,10 +155,10 @@ described in :ref:`developer-Reconfiguration`.
         :bb:cfg:`builders`.  Builders specified as dictionaries in the
         configuration file are converted to instances.
 
-    .. py:attribute:: slaves
+    .. py:attribute:: workers
 
-        The list of :py:class:`BuildSlave` instances from
-        :bb:cfg:`slaves`.
+        The list of :py:class:`Worker` instances from
+        :bb:cfg:`workers`.
 
     .. py:attribute:: change_sources
 
@@ -179,22 +179,47 @@ described in :ref:`developer-Reconfiguration`.
 
         The list of additional plugin services
 
-    Loading of the configuration file is generally triggered by the master,
-    using the following methods:
+    .. py:classmethod:: loadFromDict(config_dict, filename)
 
-    .. py:classmethod:: loadConfig(basedir, filename)
+        :param dict config_dict: The dictionary containing the configuration to load.
+        :param string filename: The filename to use when reporting errors.
+        :returns: new :py:class:`MasterConfig` instance
+
+        Load the configuration from the given dictionary.
+
+
+Loading of the configuration file is generally triggered by the master,
+using the following class:
+
+.. py:class:: FileLoader
+
+    .. py:method:: __init__(basedir, filename)
 
         :param string basedir: directory to which config is relative
         :param string filename: the configuration file to load
-        :raises: :py:exc:`ConfigErrors` if any errors occur
+
+        The filename is treated as relative to the basedir, if it is not
+        absolute.
+
+    .. py:method:: loadConfig(basedir, filename)
+
         :returns: new :py:class:`MasterConfig` instance
 
         Load the configuration in the given file.  Aside from syntax errors,
         this will also detect a number of semantic errors such as multiple
         schedulers with the same name.
 
-        The filename is treated as relative to the basedir, if it is not
-        absolute.
+.. py:function:: loadConfigDict(basedir, filename)
+
+    :param string basedir: directory to which config is relative
+    :param string filename: the configuration file to load
+    :raises: :py:exc:`ConfigErrors` if any errors occur
+    :returns dict: The ``BuildmasterConfig`` dictionary.
+
+    Load the configuration dictionary in the given file.
+
+    The filename is treated as relative to the basedir, if it is not
+    absolute.
 
 Builder Configuration
 ---------------------
@@ -216,26 +241,26 @@ Builder Configuration
 
         The builder's factory.
 
-    .. py:attribute:: slavenames
+    .. py:attribute:: workernames
 
-        The builder's slave names (a list, regardless of whether the names were
-        specified with ``slavename`` or ``slavenames``).
+        The builder's worker names (a list, regardless of whether the names were
+        specified with ``workername`` or ``workernames``).
 
     .. py:attribute:: builddir
 
         The builder's builddir.
 
-    .. py:attribute:: slavebuilddir
+    .. py:attribute:: workerbuilddir
 
-        The builder's slave-side builddir.
+        The builder's worker-side builddir.
 
     .. py:attribute:: category
 
         The builder's category.
 
-    .. py:attribute:: nextSlave
+    .. py:attribute:: nextWorker
 
-        The builder's nextSlave callable.
+        The builder's nextWorker callable.
 
     .. py:attribute:: nextBuild
 
@@ -271,7 +296,7 @@ Error Handling
 If any errors are encountered while loading the configuration :py:func:`buildbot.config.error`
 should be called. This can occur both in the configuration-loading code,
 and in the constructors of any objects that are instantiated in the
-configuration - change sources, slaves, schedulers, build steps, and so on.
+configuration - change sources, workers, schedulers, build steps, and so on.
 
 .. py:function:: error(error)
 
@@ -482,20 +507,20 @@ One workaround for this is to change the name of the scheduler before each
 reconfig - this will cause the old scheduler to be stopped, and the new
 scheduler (with the new name and class) to be started.
 
-Slaves
-......
+Workers
+.......
 
-Similar to schedulers, slaves are specified by name, so new and old
-configurations are first compared by name, and any slaves to be added or
-removed are noted.  Slaves for which the fully-qualified class name has changed
-are also added and removed.  All slaves have their
+Similar to schedulers, workers are specified by name, so new and old
+configurations are first compared by name, and any workers to be added or
+removed are noted.  Workers for which the fully-qualified class name has changed
+are also added and removed.  All workers have their
 :py:meth:`~ReconfigurableServiceMixin.reconfigService` method called.
 
-This method takes care of the basic slave attributes, including changing the PB
+This method takes care of the basic worker attributes, including changing the PB
 registration if necessary.  Any subclasses that add configuration parameters
 should override :py:meth:`~ReconfigurableServiceMixin.reconfigService` and
 update those parameters.  As with Schedulers, because the
-:py:class:`~buildbot.buildslave.AbstractBuildSlave` instance is given directly
+:py:class:`~buildbot.worker.AbstractWorker` instance is given directly
 in the configuration, on reconfig instances must extract the configuration from
 a new instance.
 

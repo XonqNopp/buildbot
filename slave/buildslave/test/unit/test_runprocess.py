@@ -20,7 +20,6 @@ import sys
 import time
 
 from mock import Mock
-
 from twisted.internet import defer
 from twisted.internet import reactor
 from twisted.internet import task
@@ -29,8 +28,8 @@ from twisted.python import runtime
 from twisted.python import util
 from twisted.trial import unittest
 
-from buildslave import runprocess
 from buildslave import util as bsutil
+from buildslave import runprocess
 from buildslave.exceptions import AbandonChain
 from buildslave.test.fake.slavebuilder import FakeSlaveBuilder
 from buildslave.test.util import compat
@@ -115,7 +114,8 @@ class TestRunProcess(BasedirMixin, unittest.TestCase):
 
     def testNoStdout(self):
         b = FakeSlaveBuilder(False, self.basedir)
-        s = runprocess.RunProcess(b, stdoutCommand('hello'), self.basedir, sendStdout=False)
+        s = runprocess.RunProcess(
+            b, stdoutCommand('hello'), self.basedir, sendStdout=False)
 
         d = s.start()
 
@@ -127,7 +127,8 @@ class TestRunProcess(BasedirMixin, unittest.TestCase):
 
     def testKeepStdout(self):
         b = FakeSlaveBuilder(False, self.basedir)
-        s = runprocess.RunProcess(b, stdoutCommand('hello'), self.basedir, keepStdout=True)
+        s = runprocess.RunProcess(
+            b, stdoutCommand('hello'), self.basedir, keepStdout=True)
 
         d = s.start()
 
@@ -152,7 +153,8 @@ class TestRunProcess(BasedirMixin, unittest.TestCase):
 
     def testNoStderr(self):
         b = FakeSlaveBuilder(False, self.basedir)
-        s = runprocess.RunProcess(b, stderrCommand("hello"), self.basedir, sendStderr=False)
+        s = runprocess.RunProcess(
+            b, stderrCommand("hello"), self.basedir, sendStderr=False)
 
         d = s.start()
 
@@ -164,7 +166,8 @@ class TestRunProcess(BasedirMixin, unittest.TestCase):
 
     def testKeepStderr(self):
         b = FakeSlaveBuilder(False, self.basedir)
-        s = runprocess.RunProcess(b, stderrCommand("hello"), self.basedir, keepStderr=True)
+        s = runprocess.RunProcess(
+            b, stderrCommand("hello"), self.basedir, keepStderr=True)
 
         d = s.start()
 
@@ -214,7 +217,8 @@ class TestRunProcess(BasedirMixin, unittest.TestCase):
 
     def testInitialStdinUnicode(self):
         b = FakeSlaveBuilder(False, self.basedir)
-        s = runprocess.RunProcess(b, catCommand(), self.basedir, initialStdin=u'hello')
+        s = runprocess.RunProcess(
+            b, catCommand(), self.basedir, initialStdin=u'hello')
 
         d = s.start()
 
@@ -270,7 +274,8 @@ class TestRunProcess(BasedirMixin, unittest.TestCase):
     def testPipeString(self):
         b = FakeSlaveBuilder(False, self.basedir)
         # this is highly contrived, but it proves the point.
-        cmd = sys.executable + ' -c "import sys; sys.stdout.write(\'b\\na\\n\')" | sort'
+        cmd = sys.executable + \
+            ' -c "import sys; sys.stdout.write(\'b\\na\\n\')" | sort'
         s = runprocess.RunProcess(b, cmd, self.basedir)
 
         d = s.start()
@@ -289,7 +294,8 @@ class TestRunProcess(BasedirMixin, unittest.TestCase):
         d = s.start()
 
         def check(ign):
-            self.failUnless({'stdout': nl('hello\n')} not in b.updates, b.show())
+            self.failUnless(
+                {'stdout': nl('hello\n')} not in b.updates, b.show())
             self.failUnless({'rc': FATAL_RC} in b.updates, b.show())
         d.addCallback(check)
         clock.advance(6)
@@ -303,7 +309,8 @@ class TestRunProcess(BasedirMixin, unittest.TestCase):
         d = s.start()
 
         def check(ign):
-            self.failUnless({'stdout': nl('hello\n')} not in b.updates, b.show())
+            self.failUnless(
+                {'stdout': nl('hello\n')} not in b.updates, b.show())
             self.failUnless({'rc': FATAL_RC} in b.updates, b.show())
         d.addCallback(check)
         clock.advance(6)  # should knock out maxTime
@@ -315,7 +322,8 @@ class TestRunProcess(BasedirMixin, unittest.TestCase):
         s = runprocess.RunProcess(b,
                                   scriptCommand('assert_stdin_closed'),
                                   self.basedir,
-                                  usePTY=False,  # if usePTY=True, stdin is never closed
+                                  # if usePTY=True, stdin is never closed
+                                  usePTY=False,
                                   logEnviron=False)
         d = s.start()
 
@@ -358,7 +366,8 @@ class TestRunProcess(BasedirMixin, unittest.TestCase):
         d = s.start()
 
         def check(ign):
-            headers = "".join([list(update.values())[0] for update in b.updates if list(update) == ["header"]])
+            headers = "".join([list(update.values())[0]
+                               for update in b.updates if list(update) == ["header"]])
             self.failUnless("FOO=BAR" in headers, "got:\n" + headers)
         d.addCallback(check)
         return d
@@ -371,7 +380,8 @@ class TestRunProcess(BasedirMixin, unittest.TestCase):
         d = s.start()
 
         def check(ign):
-            headers = "".join([list(update.values())[0] for update in b.updates if list(update) == ["header"]])
+            headers = "".join([list(update.values())[0]
+                               for update in b.updates if list(update) == ["header"]])
             self.failUnless("FOO=BAR" not in headers, "got:\n" + headers)
         d.addCallback(check)
         return d
@@ -381,15 +391,18 @@ class TestRunProcess(BasedirMixin, unittest.TestCase):
         environ = {"EXPND": "-${PATH}-",
                    "DOESNT_EXPAND": "-${---}-",
                    "DOESNT_FIND": "-${DOESNT_EXISTS}-"}
-        s = runprocess.RunProcess(b, stdoutCommand('hello'), self.basedir, environ=environ)
+        s = runprocess.RunProcess(
+            b, stdoutCommand('hello'), self.basedir, environ=environ)
 
         d = s.start()
 
         def check(ign):
-            headers = "".join([list(update.values())[0] for update in b.updates if list(update) == ["header"]])
+            headers = "".join([list(update.values())[0]
+                               for update in b.updates if list(update) == ["header"]])
             self.failUnless("EXPND=-$" not in headers, "got:\n" + headers)
             self.failUnless("DOESNT_FIND=--" in headers, "got:\n" + headers)
-            self.failUnless("DOESNT_EXPAND=-${---}-" in headers, "got:\n" + headers)
+            self.failUnless(
+                "DOESNT_EXPAND=-${---}-" in headers, "got:\n" + headers)
         d.addCallback(check)
         return d
 
@@ -401,8 +414,10 @@ class TestRunProcess(BasedirMixin, unittest.TestCase):
         d = s.start()
 
         def check(ign):
-            headers = "".join([list(update.values())[0] for update in b.updates if list(update) == ["header"]])
-            self.failUnless(not re.match('\bPATH=', headers), "got:\n" + headers)
+            headers = "".join([list(update.values())[0]
+                               for update in b.updates if list(update) == ["header"]])
+            self.failUnless(
+                not re.match('\bPATH=', headers), "got:\n" + headers)
         d.addCallback(check)
         return d
 
@@ -414,7 +429,8 @@ class TestRunProcess(BasedirMixin, unittest.TestCase):
         d = s.start()
 
         def check(ign):
-            headers = "".join([list(update.values())[0] for update in b.updates if list(update) == ["header"]])
+            headers = "".join([list(update.values())[0]
+                               for update in b.updates if list(update) == ["header"]])
             self.failUnless(not re.match('\bPYTHONPATH=a%s' % (os.pathsep), headers),
                             "got:\n" + headers)
         d.addCallback(check)
@@ -428,7 +444,8 @@ class TestRunProcess(BasedirMixin, unittest.TestCase):
         d = s.start()
 
         def check(ign):
-            headers = "".join([list(update.values())[0] for update in b.updates if list(update) == ["header"]])
+            headers = "".join([list(update.values())[0]
+                               for update in b.updates if list(update) == ["header"]])
             self.failUnless(not re.match('\bFOO=a%sb\b' % (os.pathsep), headers),
                             "got:\n" + headers)
         d.addCallback(check)
@@ -543,7 +560,8 @@ class TestPOSIXKilling(BasedirMixin, unittest.TestCase):
 
         b = FakeSlaveBuilder(False, self.basedir)
         s = runprocess.RunProcess(b,
-                                  scriptCommand('write_pidfile_and_sleep', pidfile),
+                                  scriptCommand(
+                                      'write_pidfile_and_sleep', pidfile),
                                   self.basedir)
         if interruptSignal is not None:
             s.interruptSignal = interruptSignal
@@ -572,7 +590,8 @@ class TestPOSIXKilling(BasedirMixin, unittest.TestCase):
         self.pid = None
         b = FakeSlaveBuilder(False, self.basedir)
         s = runprocess.RunProcess(b,
-                                  scriptCommand('write_pidfile_and_sleep', pidfile),
+                                  scriptCommand(
+                                      'write_pidfile_and_sleep', pidfile),
                                   self.basedir, sigtermTime=1)
         runproc_d = s.start()
         pidfile_d = self.waitForPidfile(pidfile)
@@ -627,7 +646,8 @@ class TestPOSIXKilling(BasedirMixin, unittest.TestCase):
 
         b = FakeSlaveBuilder(False, self.basedir)
         s = runprocess.RunProcess(b,
-                                  scriptCommand('spawn_child', parent_pidfile, child_pidfile),
+                                  scriptCommand(
+                                      'spawn_child', parent_pidfile, child_pidfile),
                                   self.basedir,
                                   usePTY=usePTY,
                                   useProcGroup=useProcGroup)
@@ -682,7 +702,8 @@ class TestPOSIXKilling(BasedirMixin, unittest.TestCase):
 
         b = FakeSlaveBuilder(False, self.basedir)
         s = runprocess.RunProcess(b,
-                                  scriptCommand('double_fork', parent_pidfile, child_pidfile),
+                                  scriptCommand(
+                                      'double_fork', parent_pidfile, child_pidfile),
                                   self.basedir,
                                   usePTY=usePTY,
                                   useProcGroup=useProcGroup)
@@ -790,5 +811,6 @@ class TestLogFileWatcher(BasedirMixin, unittest.TestCase):
         open('statfile.log', 'w').write('hi')
         lf = runprocess.LogFileWatcher(rp, 'test', 'statfile.log', False)
         st = lf.statFile()
-        self.assertEqual(st and st[2], 2, "statfile.log exists and size is correct")
+        self.assertEqual(
+            st and st[2], 2, "statfile.log exists and size is correct")
         os.remove('statfile.log')

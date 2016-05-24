@@ -12,6 +12,9 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+from twisted.internet import defer
+from twisted.internet import reactor
+from twisted.trial import unittest
 
 from buildbot.data import steps
 from buildbot.test.fake import fakedb
@@ -19,9 +22,6 @@ from buildbot.test.fake import fakemaster
 from buildbot.test.util import endpoint
 from buildbot.test.util import interfaces
 from buildbot.util import epoch2datetime
-from twisted.internet import defer
-from twisted.internet import reactor
-from twisted.trial import unittest
 
 TIME1 = 2001111
 TIME2 = 2002222
@@ -36,13 +36,13 @@ class StepEndpoint(endpoint.EndpointMixin, unittest.TestCase):
     def setUp(self):
         self.setUpEndpoint()
         self.db.insertTestData([
-            fakedb.Buildslave(id=47, name='linux'),
+            fakedb.Worker(id=47, name='linux'),
             fakedb.Builder(id=77),
             fakedb.Master(id=88),
             fakedb.Buildset(id=8822),
             fakedb.BuildRequest(id=82, buildsetid=8822),
             fakedb.Build(id=30, builderid=77, number=7, masterid=88,
-                         buildrequestid=82, buildslaveid=47),
+                         buildrequestid=82, workerid=47),
             fakedb.Step(id=70, number=0, name='one', buildid=30,
                         started_at=TIME1, complete_at=TIME2, results=0),
             fakedb.Step(id=71, number=1, name='two', buildid=30,
@@ -110,15 +110,15 @@ class StepsEndpoint(endpoint.EndpointMixin, unittest.TestCase):
     def setUp(self):
         self.setUpEndpoint()
         self.db.insertTestData([
-            fakedb.Buildslave(id=47, name='linux'),
+            fakedb.Worker(id=47, name='linux'),
             fakedb.Builder(id=77),
             fakedb.Master(id=88),
             fakedb.Buildset(id=8822),
             fakedb.BuildRequest(id=82, buildsetid=8822),
             fakedb.Build(id=30, builderid=77, number=7, masterid=88,
-                         buildrequestid=82, buildslaveid=47),
+                         buildrequestid=82, workerid=47),
             fakedb.Build(id=31, builderid=77, number=8, masterid=88,
-                         buildrequestid=82, buildslaveid=47),
+                         buildrequestid=82, workerid=47),
             fakedb.Step(id=70, number=0, name='one', buildid=30,
                         started_at=TIME1, complete_at=TIME2, results=0),
             fakedb.Step(id=71, number=1, name='two', buildid=30,

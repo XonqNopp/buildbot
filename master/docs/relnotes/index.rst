@@ -1,16 +1,21 @@
-Release Notes for Buildbot |version|
-====================================
+Release Notes for Buildbot ``|version|``
+========================================
 
 ..
     Any change that adds a feature or fixes a bug should have an entry here.
     Most simply need an additional bulleted list item, but more significant
     changes can be given a subsection of their own.
 
+    If you can:
+
+       please point to the bug using syntax: (:bug:`NNN`)
+       please point to classes using syntax: :py:class:`~buildbot.reporters.http.HttpStatusBase`
+
 ..
-    NOTE: When releasing 0.9.0, combine these notes with those from 0.9.0b{1,2,3,4,5}
+    NOTE: When releasing 0.9.0, combine these notes with those from 0.9.0b*
     into one single set of notes.  Also, link prominently to the migration guide.
 
-The following are the release notes for Buildbot |version|
+The following are the release notes for Buildbot ``|version|``.
 
 See :ref:`Upgrading to Nine` for a guide to upgrading from 0.8.x to 0.9.x
 
@@ -20,19 +25,15 @@ Master
 Features
 ~~~~~~~~
 
-* :class:`GitPoller` now has a ``buildPushesWithNoCommits`` option to allow the rebuild of already known commits on new branches.
+* new :bb:reporter:`HipchatStatusPush` to report build results to Hipchat.
 
 Fixes
 ~~~~~
 
-Deprecations, Removals, and Non-Compatible Changes
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+* :bb:reporter:`GerritStatusPush` now includes build properties in the ``startCB`` and ``reviewCB`` functions. ``startCB`` now must return a dictionary.
 
 Changes for Developers
 ~~~~~~~~~~~~~~~~~~~~~~
-
-Slave
------
 
 Features
 ~~~~~~~~
@@ -40,8 +41,39 @@ Features
 Fixes
 ~~~~~
 
+
 Deprecations, Removals, and Non-Compatible Changes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Support for python 2.6 was dropped from the master.
+
+Buildslave
+----------
+
+Fixes
+~~~~~
+
+* ``buildslave`` script now outputs messages to the terminal.
+
+
+Worker
+------
+
+Fixes
+~~~~~
+
+Changes for Developers
+~~~~~~~~~~~~~~~~~~~~~~
+
+* EC2 Latent Worker upgraded from ``boto2`` to ``boto3``.
+
+Deprecations, Removals, and Non-Compatible Changes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Master/worker protocol has been changed:
+
+  * ``getSlaveInfo`` remote method was renamed to ``getWorkerInfo``.
+
 
 Details
 -------
@@ -50,7 +82,7 @@ For a more detailed description of the changes made in this version, see the git
 
 .. code-block:: bash
 
-   git log v0.9.0b7..master
+   git log v0.9.0b9..master
 
 Older Versions
 --------------
@@ -61,6 +93,8 @@ Newer versions are also available here:
 .. toctree::
     :maxdepth: 1
 
+    0.9.0b9
+    0.9.0b8
     0.9.0b7
     0.9.0b6
     0.9.0b5

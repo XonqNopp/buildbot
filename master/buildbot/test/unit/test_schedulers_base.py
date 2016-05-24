@@ -12,8 +12,10 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import mock
+from twisted.internet import defer
+from twisted.internet import task
+from twisted.trial import unittest
 
 from buildbot import config
 from buildbot.changes import changes
@@ -21,14 +23,12 @@ from buildbot.process import properties
 from buildbot.schedulers import base
 from buildbot.test.fake import fakedb
 from buildbot.test.util import scheduler
-from twisted.internet import defer
-from twisted.internet import task
-from twisted.trial import unittest
 
 
 class BaseScheduler(scheduler.SchedulerMixin, unittest.TestCase):
 
     OBJECTID = 19
+    SCHEDULERID = 9
     exp_bsid_brids = (123, {'b': 456})
 
     def setUp(self):
@@ -50,7 +50,7 @@ class BaseScheduler(scheduler.SchedulerMixin, unittest.TestCase):
         sched = self.attachScheduler(
             base.BaseScheduler(name=name, builderNames=builderNames,
                                properties=properties, codebases=codebases),
-            self.OBJECTID)
+            self.OBJECTID, self.SCHEDULERID)
         self.master.data.updates.addBuildset = mock.Mock(
             name='data.addBuildset',
             side_effect=lambda *args, **kwargs:
@@ -84,7 +84,8 @@ class BaseScheduler(scheduler.SchedulerMixin, unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_getCodebaseDict(self):
-        sched = self.makeScheduler(codebases={'lib': {'repository': 'librepo'}})
+        sched = self.makeScheduler(
+            codebases={'lib': {'repository': 'librepo'}})
         cbd = yield sched.getCodebaseDict('lib')
         self.assertEqual(cbd, {'repository': 'librepo'})
 
@@ -95,16 +96,13 @@ class BaseScheduler(scheduler.SchedulerMixin, unittest.TestCase):
         self.assertEqual(cbd, {})
 
     def test_getCodebaseDict_not_found(self):
-        sched = self.makeScheduler(codebases={'lib': {'repository': 'librepo'}})
+        sched = self.makeScheduler(
+            codebases={'lib': {'repository': 'librepo'}})
         return self.assertFailure(sched.getCodebaseDict('app'), KeyError)
 
     def test_listBuilderNames(self):
         sched = self.makeScheduler(builderNames=['x', 'y'])
         self.assertEqual(sched.listBuilderNames(), ['x', 'y'])
-
-    def test_getPendingBuildTimes(self):
-        sched = self.makeScheduler()
-        self.assertEqual(sched.getPendingBuildTimes(), [])
 
     @defer.inlineCallbacks
     def test_startConsumingChanges_fileIsImportant_check(self):
@@ -223,7 +221,7 @@ class BaseScheduler(scheduler.SchedulerMixin, unittest.TestCase):
         sched.deactivate = mock.Mock(return_value=defer.succeed(None))
 
         # set the schedulerid, and claim the scheduler on another master
-        self.setSchedulerToMaster(self.OTHER_MASTER_ID)
+        yield self.setSchedulerToMaster(self.OTHER_MASTER_ID)
 
         yield sched.startService()
         sched.clock.advance(sched.POLL_INTERVAL_SEC / 2)
@@ -232,7 +230,8 @@ class BaseScheduler(scheduler.SchedulerMixin, unittest.TestCase):
         self.assertFalse(sched.activate.called)
         self.assertFalse(sched.deactivate.called)
         self.assertFalse(sched.isActive())
-        self.assertEqual(sched.serviceid, sched.objectid)  # objectid is attached by the test helper
+        # objectid is attached by the test helper
+        self.assertEqual(sched.serviceid, self.SCHEDULERID)
 
         # clear that masterid
         yield sched.stopService()
@@ -488,7 +487,8 @@ class BaseScheduler(scheduler.SchedulerMixin, unittest.TestCase):
         sched = self.makeScheduler(name='n', builderNames=['b', 'x', 'y'])
         bsid, brids = yield sched.addBuildsetForSourceStamps(reason=u'whynot',
                                                              waited_for=True,
-                                                             sourcestamps=[91, {'sourcestamp': True}],
+                                                             sourcestamps=[
+                                                                 91, {'sourcestamp': True}],
                                                              builderNames=['x', 'y'])
         self.assertEqual((bsid, brids), self.exp_bsid_brids)
         self.master.data.updates.addBuildset.assert_called_with(

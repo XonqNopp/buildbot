@@ -12,16 +12,15 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import mock
+from twisted.internet import defer
+from twisted.internet import task
+from twisted.trial import unittest
 
 from buildbot import config
 from buildbot.schedulers import basic
 from buildbot.test.fake import fakedb
 from buildbot.test.util import scheduler
-from twisted.internet import defer
-from twisted.internet import task
-from twisted.trial import unittest
 
 
 class CommonStuffMixin(object):
@@ -31,8 +30,10 @@ class CommonStuffMixin(object):
                       builderNames=['tbuild'])
         kwargs.update(kwargs_override)
 
-        self.master.db.insertTestData([fakedb.Builder(name=builderName) for builderName in kwargs['builderNames']])
-        sched = self.attachScheduler(klass(**kwargs), self.SCHEDULERID)
+        self.master.db.insertTestData(
+            [fakedb.Builder(name=builderName) for builderName in kwargs['builderNames']])
+        sched = self.attachScheduler(
+            klass(**kwargs), self.OBJECTID, self.SCHEDULERID)
 
         # add a Clock to help checking timing issues
         self.clock = sched._reactor = task.Clock()
@@ -68,7 +69,8 @@ class CommonStuffMixin(object):
 class BaseBasicScheduler(CommonStuffMixin,
                          scheduler.SchedulerMixin, unittest.TestCase):
 
-    SCHEDULERID = 244
+    OBJECTID = 244
+    SCHEDULERID = 4
 
     # a custom subclass since we're testing the base class.  This basically
     # re-implements SingleBranchScheduler, but with more asserts
@@ -152,9 +154,7 @@ class BaseBasicScheduler(CommonStuffMixin,
             self.db.schedulers.assertClassifications(
                 self.SCHEDULERID, {20: True})
             self.assertTrue(sched.timer_started)
-            self.assertEqual(sched.getPendingBuildTimes(), [10])
             self.clock.advance(10)
-            self.assertEqual(sched.getPendingBuildTimes(), [])
         d.addCallback(check)
         d.addCallback(lambda _: sched.deactivate())
         return d
@@ -246,7 +246,6 @@ class BaseBasicScheduler(CommonStuffMixin,
             self.makeFakeChange(branch='master', number=1, when=2220),
             True)
         self.assertEqual(self.events, [])
-        self.assertEqual(sched.getPendingBuildTimes(), [2229])
         self.db.schedulers.assertClassifications(self.SCHEDULERID, {1: True})
 
         # but another (unimportant) change arrives before then
@@ -257,7 +256,6 @@ class BaseBasicScheduler(CommonStuffMixin,
             self.makeFakeChange(branch='master', number=2, when=2226),
             False)
         self.assertEqual(self.events, [])
-        self.assertEqual(sched.getPendingBuildTimes(), [2235])
         self.db.schedulers.assertClassifications(
             self.SCHEDULERID, {1: True, 2: False})
 
@@ -272,7 +270,6 @@ class BaseBasicScheduler(CommonStuffMixin,
             self.makeFakeChange(branch='master', number=3, when=2232),
             True)
         self.assertEqual(self.events, [])
-        self.assertEqual(sched.getPendingBuildTimes(), [2241])
         self.db.schedulers.assertClassifications(
             self.SCHEDULERID, {1: True, 2: False, 3: True})
 
@@ -282,7 +279,6 @@ class BaseBasicScheduler(CommonStuffMixin,
         # finally, time to start the build!
         self.clock.advance(6)  # to 2241
         self.assertEqual(self.events, ['B[1,2,3]@2241'])
-        self.assertEqual(sched.getPendingBuildTimes(), [])
         self.db.schedulers.assertClassifications(self.SCHEDULERID, {})
 
         yield sched.deactivate()
@@ -298,9 +294,10 @@ class SingleBranchScheduler(CommonStuffMixin,
                  'b': {'repository': "", 'branch': 'master'}}
 
     def makeFullScheduler(self, **kwargs):
-        self.master.db.insertTestData([fakedb.Builder(name=builderName) for builderName in kwargs['builderNames']])
+        self.master.db.insertTestData(
+            [fakedb.Builder(name=builderName) for builderName in kwargs['builderNames']])
         sched = self.attachScheduler(basic.SingleBranchScheduler(**kwargs),
-                                     self.SCHEDULERID,
+                                     self.OBJECTID, self.SCHEDULERID,
                                      overrideBuildsetMethods=True)
 
         # add a Clock to help checking timing issues
@@ -456,7 +453,8 @@ class SingleBranchScheduler(CommonStuffMixin,
 class AnyBranchScheduler(CommonStuffMixin,
                          scheduler.SchedulerMixin, unittest.TestCase):
 
-    SCHEDULERID = 246
+    SCHEDULERID = 6
+    OBJECTID = 246
 
     def setUp(self):
         self.setUpScheduler()
@@ -484,21 +482,15 @@ class AnyBranchScheduler(CommonStuffMixin,
         d.addCallback(lambda _:
                       sched.gotChange(mkch(branch='master', number=13), True))
         d.addCallback(lambda _:
-                      self.assertEqual(sched.getPendingBuildTimes(), [10]))
-        d.addCallback(lambda _:
                       self.clock.advance(1))  # time is now 1
         d.addCallback(lambda _:
                       sched.gotChange(mkch(branch='master', number=14), False))
-        d.addCallback(lambda _:
-                      self.assertEqual(sched.getPendingBuildTimes(), [11]))
         d.addCallback(lambda _:
                       sched.gotChange(mkch(branch='boring', number=15), False))
         d.addCallback(lambda _:
                       self.clock.pump([1] * 4))  # time is now 5
         d.addCallback(lambda _:
                       sched.gotChange(mkch(branch='devel', number=16), True))
-        d.addCallback(lambda _:
-                      self.assertEqual(sorted(sched.getPendingBuildTimes()), [11, 15]))
         d.addCallback(lambda _:
                       self.clock.pump([1] * 10))  # time is now 15
 

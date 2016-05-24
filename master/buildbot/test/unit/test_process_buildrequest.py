@@ -12,15 +12,15 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-from future.utils import itervalues
-
 import mock
-
-from buildbot.process import buildrequest
-from buildbot.test.fake import fakedb
-from buildbot.test.fake import fakemaster
+from future.utils import itervalues
 from twisted.internet import defer
 from twisted.trial import unittest
+
+from buildbot.process import buildrequest
+from buildbot.process.builder import Builder
+from buildbot.test.fake import fakedb
+from buildbot.test.fake import fakemaster
 
 
 class TestBuildRequestCollapser(unittest.TestCase):
@@ -62,7 +62,7 @@ class TestBuildRequestCollapser(unittest.TestCase):
 
     def test_collapseRequests_no_other_request(self):
 
-        def collapseRequests_fn(builder, brdict1, brdict2):
+        def collapseRequests_fn(master, builder, brdict1, brdict2):
             # Allow all requests
             self.fail("Should never be called")
             return True
@@ -78,11 +78,11 @@ class TestBuildRequestCollapser(unittest.TestCase):
             fakedb.BuildRequest(id=19, buildsetid=30, builderid=77,
                                 priority=13, submitted_at=1300305712, results=-1),
         ]
-        self.do_request_collapse(rows, [19], [])
+        return self.do_request_collapse(rows, [19], [])
 
     def test_collapseRequests_no_collapse(self):
 
-        def collapseRequests_fn(builder, brdict1, brdict2):
+        def collapseRequests_fn(master, builder, brdict1, brdict2):
             # Fail all collapse attempts
             return False
 
@@ -109,11 +109,11 @@ class TestBuildRequestCollapser(unittest.TestCase):
         ]
 
         self.bldr.getCollapseRequestsFn = lambda: collapseRequests_fn
-        self.do_request_collapse(rows, [21], [])
+        return self.do_request_collapse(rows, [21], [])
 
     def test_collapseRequests_collapse_all(self):
 
-        def collapseRequests_fn(builder, brdict1, brdict2):
+        def collapseRequests_fn(master, builder, brdict1, brdict2):
             # collapse all attempts
             return True
 
@@ -140,11 +140,12 @@ class TestBuildRequestCollapser(unittest.TestCase):
         ]
 
         self.bldr.getCollapseRequestsFn = lambda: collapseRequests_fn
-        self.do_request_collapse(rows, [21], [19, 20])
+        return self.do_request_collapse(rows, [21], [19, 20])
 
+    @defer.inlineCallbacks
     def test_collapseRequests_collapse_default(self):
 
-        def collapseRequests_fn(builder, brdict1, brdict2):
+        def collapseRequests_fn(master, builder, brdict1, brdict2):
             return buildrequest.BuildRequest.canBeCollapsed(builder.master, brdict1, brdict2)
 
         rows = [
@@ -175,9 +176,9 @@ class TestBuildRequestCollapser(unittest.TestCase):
                                 priority=13, submitted_at=1300305712, results=-1),
         ]
 
-        self.bldr.getCollapseRequestsFn = lambda: collapseRequests_fn
-        self.do_request_collapse(rows, [22], [])
-        self.do_request_collapse(rows, [21], [19, 20])
+        self.bldr.getCollapseRequestsFn = lambda: Builder._defaultCollapseRequestFn
+        yield self.do_request_collapse(rows, [22], [])
+        yield self.do_request_collapse(rows, [21], [19, 20])
 
 
 class TestBuildRequest(unittest.TestCase):
@@ -444,7 +445,8 @@ class TestBuildRequest(unittest.TestCase):
         d.addCallback(lambda _:
                       master.db.buildrequests.getBuildRequest(289))
         d.addCallback(lambda brdict: brDicts.append(brdict))
-        d.addCallback(lambda _: buildrequest.BuildRequest.canBeCollapsed(master, brDicts[0], brDicts[1]))
+        d.addCallback(lambda _: buildrequest.BuildRequest.canBeCollapsed(
+            master, brDicts[0], brDicts[1]))
 
         def check(canBeCollapsed):
             self.assertEqual(canBeCollapsed, False)

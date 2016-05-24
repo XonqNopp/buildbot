@@ -12,16 +12,15 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+try:
+    from influxdb import InfluxDBClient
+except ImportError:
+    InfluxDBClient = None
 
 from twisted.python import log
 
 from buildbot import config
 from buildbot.statistics.storage_backends.base import StatsStorageBase
-
-try:
-    from influxdb import InfluxDBClient
-except ImportError:
-    InfluxDBClient = None
 
 
 class InfluxStorageService(StatsStorageBase):
@@ -34,6 +33,7 @@ class InfluxStorageService(StatsStorageBase):
                  name="InfluxStorageService"):
         if not InfluxDBClient:
             config.error("Python client for InfluxDB not installed.")
+            return
         self.url = url
         self.port = port
         self.user = user

@@ -12,14 +12,13 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import mock
-
-from buildbot import config
-from buildbot.util import service
 from twisted.internet import defer
 from twisted.internet import task
 from twisted.trial import unittest
+
+from buildbot import config
+from buildbot.util import service
 
 
 class DeferredStartStop(service.AsyncService):
@@ -236,7 +235,8 @@ class ClusteredBuildbotService(unittest.TestCase):
             self.svc.clock.advance(self.svc.POLL_INTERVAL_SEC)
 
         self.assertEqual(1, self.svc._getServiceId.call_count)
-        self.assertEqual(1 + NUMBER_OF_POLLS, self.svc._claimService.call_count)
+        self.assertEqual(
+            1 + NUMBER_OF_POLLS, self.svc._claimService.call_count)
 
     def test_start_ClaimSucceeds(self):
         self.setServiceClaimable(self.svc, defer.succeed(True))
@@ -576,7 +576,8 @@ class BuildbotService(unittest.TestCase):
     @defer.inlineCallbacks
     def testNominal(self):
         yield self.prepareService()
-        self.assertEqual(self.master.namedServices["basic"].config, ((1,), dict(a=2)))
+        self.assertEqual(
+            self.master.namedServices["basic"].config, ((1,), dict(a=2)))
 
     @defer.inlineCallbacks
     def testConfigDict(self):
@@ -591,7 +592,8 @@ class BuildbotService(unittest.TestCase):
         self.assertRaises(ValueError, lambda: MyService(1, a=2))
 
     def testChecksDone(self):
-        self.assertRaises(config.ConfigErrors, lambda: MyService(1, name="foo"))
+        self.assertRaises(
+            config.ConfigErrors, lambda: MyService(1, name="foo"))
 
 
 class BuildbotServiceManager(unittest.TestCase):
@@ -613,7 +615,8 @@ class BuildbotServiceManager(unittest.TestCase):
     @defer.inlineCallbacks
     def testNominal(self):
         yield self.prepareService()
-        self.assertEqual(self.manager.namedServices["basic"].config, ((1,), dict(a=2)))
+        self.assertEqual(
+            self.manager.namedServices["basic"].config, ((1,), dict(a=2)))
 
     @defer.inlineCallbacks
     def testReconfigNoChange(self):
@@ -656,7 +659,8 @@ class BuildbotServiceManager(unittest.TestCase):
         self.assertRaises(ValueError, lambda: MyService(1, a=2))
 
     def testChecksDone(self):
-        self.assertRaises(config.ConfigErrors, lambda: MyService(1, name="foo"))
+        self.assertRaises(
+            config.ConfigErrors, lambda: MyService(1, name="foo"))
 
     @defer.inlineCallbacks
     def testReconfigWithNew(self):

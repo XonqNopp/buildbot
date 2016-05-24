@@ -13,17 +13,18 @@
 #
 # Copyright Buildbot Team Members
 
-import mock
 import posixpath
+
+import mock
+from twisted.python import components
 
 from buildbot import config
 from buildbot import interfaces
-from buildbot.buildslave import base
 from buildbot.process import factory
 from buildbot.process import properties
-from buildbot.process import slavebuilder
+from buildbot.process import workerforbuilder
 from buildbot.test.fake import fakemaster
-from twisted.python import components
+from buildbot.worker import base
 
 
 class FakeBuildStatus(properties.PropertiesMixin, object):
@@ -34,7 +35,7 @@ class FakeBuildStatus(properties.PropertiesMixin, object):
     def getInterestedUsers(self):
         return []
 
-    def setSlavename(self, _):
+    def setWorkername(self, _):
         pass
 
     def setSourceStamps(self, _):
@@ -68,11 +69,12 @@ class FakeBuild(properties.PropertiesMixin):
     def __init__(self, props=None, master=None):
         self.build_status = FakeBuildStatus()
         self.builder = fakemaster.FakeBuilderStatus(master)
-        self.slavebuilder = mock.Mock(spec=slavebuilder.SlaveBuilder)
-        self.slavebuilder.slave = mock.Mock(spec=base.BuildSlave)
+        self.workerforbuilder = mock.Mock(
+            spec=workerforbuilder.WorkerForBuilder)
+        self.workerforbuilder.worker = mock.Mock(spec=base.Worker)
         self.builder.config = config.BuilderConfig(
             name='bldr',
-            slavenames=['a'],
+            workernames=['a'],
             factory=factory.BuildFactory())
         self.path_module = posixpath
         self.buildid = 92

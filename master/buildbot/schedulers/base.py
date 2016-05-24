@@ -13,7 +13,10 @@
 #
 # Copyright Buildbot Team Members
 from future.utils import iteritems
-
+from twisted.internet import defer
+from twisted.python import failure
+from twisted.python import log
+from zope.interface import implements
 
 from buildbot import config
 from buildbot import interfaces
@@ -21,10 +24,6 @@ from buildbot.changes import changes
 from buildbot.process.properties import Properties
 from buildbot.util.service import ClusteredBuildbotService
 from buildbot.util.state import StateMixin
-from twisted.internet import defer
-from twisted.python import failure
-from twisted.python import log
-from zope.interface import implements
 
 
 class BaseScheduler(ClusteredBuildbotService, StateMixin):
@@ -70,7 +69,8 @@ class BaseScheduler(ClusteredBuildbotService, StateMixin):
         elif isinstance(codebases, list):
             codebases = dict((codebase, {}) for codebase in codebases)
         elif not isinstance(codebases, dict):
-            config.error("Codebases must be a dict of dicts, or list of strings")
+            config.error(
+                "Codebases must be a dict of dicts, or list of strings")
         else:
             for codebase, attrs in iteritems(codebases):
                 if not isinstance(attrs, dict):
@@ -115,9 +115,6 @@ class BaseScheduler(ClusteredBuildbotService, StateMixin):
 
     def listBuilderNames(self):
         return self.builderNames
-
-    def getPendingBuildTimes(self):
-        return []
 
     # change handling
 
@@ -306,7 +303,11 @@ class BaseScheduler(ClusteredBuildbotService, StateMixin):
         if not builderNames:
             builderNames = self.builderNames
 
-        # Get the builder id
+        # Get the builder ids
+        # Note that there is a data.updates.findBuilderId(name)
+        # but that would merely only optimize the single builder case, while
+        # probably the multiple builder case will be severaly impacted by the
+        # several db requests needed.
         builderids = list()
         for bldr in (yield self.master.data.get(('builders', ))):
             if bldr['name'] in builderNames:

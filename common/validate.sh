@@ -159,7 +159,7 @@ fi
 if ! $quick; then
     status "running Python tests"
     run_tests || not_ok "Python tests failed"
-elif [ -z `which cctrial` ]; then
+elif [ -z `command -v cctrial` ]; then
     warning "Skipping Python Tests ('pip install cctrial' for quick tests)"
 else
     cctrial -H buildbot buildslave || not_ok "Python tests failed"
@@ -176,18 +176,23 @@ check_sa_Table || warning "use (buildbot.util.)sautils.Table instead of sa.Table
 status "checking for release notes"
 check_relnotes || warning "$REVRANGE does not add release notes"
 
-status "checking import module convention in modified files"
-RES=true
-for filename in ${py_files[@]}; do
-  if ! python common/fiximports.py "$filename"; then
-    echo "cannot fix imports of $filename"
-    RES=false
-  fi
-done
-$RES || warning "some import fixes failed -- not enforcing for now"
+if [ ${#py_files[@]} -ne 0 ]; then
+    status "checking import module convention in modified files"
+    if [[ -z `command -v isort` ]]; then
+        warning "isort is not installed"
+    else
+        if ! isort ${py_files[@]}; then
+            warning "unable to run isort on modified files"
+        else
+            if ! git diff --quiet --exit-code ${py_files[@]}; then
+                not_ok "isort made changes"
+            fi
+        fi
+    fi
+fi
 
 status "running autopep8"
-if [[ -z `which autopep8` ]]; then
+if [[ -z `command -v autopep8` ]]; then
     warning "autopep8 is not installed"
 elif [[ ! -f common/flake8rc ]]; then
     warning "common/flake8rc not found"
@@ -212,7 +217,7 @@ else
 fi
 
 status "running flake8"
-if [[ -z `which flake8` ]]; then
+if [[ -z `command -v flake8` ]]; then
     warning "flake8 is not installed"
 else
     flake8_ok=true
@@ -226,7 +231,7 @@ fi
 
 
 status "running pylint"
-if [[ -z `which pylint` ]]; then
+if [[ -z `command -v pylint` ]]; then
     warning "pylint is not installed"
 elif [[ ! -f common/pylintrc ]]; then
     warning "common/pylintrc not found"

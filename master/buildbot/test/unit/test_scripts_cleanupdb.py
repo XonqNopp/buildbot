@@ -13,20 +13,20 @@
 #
 # Copyright Buildbot Team Members
 import os
-import sqlalchemy as sa
 import textwrap
 
+import sqlalchemy as sa
 from twisted.internet import defer
 from twisted.trial import unittest
 
 import test_db_logs
-
 from buildbot.db.connector import DBConnector
 from buildbot.scripts import cleanupdb
 from buildbot.test.fake import fakemaster
 from buildbot.test.util import db
 from buildbot.test.util import dirs
 from buildbot.test.util import misc
+
 try:
     import lz4
     [lz4]
@@ -39,6 +39,19 @@ def mkconfig(**kwargs):
     config = dict(quiet=False, basedir=os.path.abspath('basedir'))
     config.update(kwargs)
     return config
+
+
+def patch_environ(case, key, value):
+    """
+    Add an environment variable for the duration of a test.
+    """
+    old_environ = os.environ.copy()
+
+    def cleanup():
+        os.environ.clear()
+        os.environ.update(old_environ)
+    os.environ[key] = value
+    case.addCleanup(cleanup)
 
 
 class TestCleanupDb(misc.StdoutAssertionsMixin, dirs.DirsMixin,
@@ -64,10 +77,10 @@ class TestCleanupDb(misc.StdoutAssertionsMixin, dirs.DirsMixin,
             f.write(textwrap.dedent("""
                 from buildbot.plugins import *
                 c = BuildmasterConfig = dict()
-                c['db_url'] = "{dburl}"
+                c['db_url'] = {dburl}
                 c['multiMaster'] = True  # dont complain for no builders
                 {extraconfig}
-            """.format(dburl=os.environ.get("BUILDBOT_TEST_DB_URL"),
+            """.format(dburl=repr(os.environ["BUILDBOT_TEST_DB_URL"]),
                        extraconfig=extraconfig)))
 
     @defer.inlineCallbacks
@@ -84,11 +97,19 @@ class TestCleanupDb(misc.StdoutAssertionsMixin, dirs.DirsMixin,
 
     @defer.inlineCallbacks
     def test_cleanup_bad_config2(self):
+        # test may use mysql or pg if configured in env
+        if "BUILDBOT_TEST_DB_URL" not in os.environ:
+
+            patch_environ(self, "BUILDBOT_TEST_DB_URL", "sqlite:///" + os.path.join(self.origcwd,
+                                                                                    "basedir", "state.sqlite"))
+
         self.createMasterCfg(extraconfig="++++ # syntaxerror")
         res = yield cleanupdb._cleanupDatabase(mkconfig(basedir='basedir'))
         self.assertEqual(res, 1)
-        self.assertInStdout("error while parsing config")
-        # config logs an error via log.err, we must eat it or trial will complain
+        self.assertInStdout(
+            "encountered a SyntaxError while parsing config file:")
+        # config logs an error via log.err, we must eat it or trial will
+        # complain
         self.flushLoggedErrors()
 
     @defer.inlineCallbacks
@@ -96,12 +117,13 @@ class TestCleanupDb(misc.StdoutAssertionsMixin, dirs.DirsMixin,
 
         # test may use mysql or pg if configured in env
         if "BUILDBOT_TEST_DB_URL" not in os.environ:
-            os.environ["BUILDBOT_TEST_DB_URL"] = "sqlite:///" + os.path.join(self.origcwd,
-                                                                             "basedir", "state.sqlite")
+
+            patch_environ(self, "BUILDBOT_TEST_DB_URL", "sqlite:///" + os.path.join(self.origcwd,
+                                                                                    "basedir", "state.sqlite"))
         # we reuse RealDatabaseMixin to setup the db
         yield self.setUpRealDatabase(table_names=['logs', 'logchunks', 'steps', 'builds', 'builders',
                                                   'masters', 'buildrequests', 'buildsets',
-                                                  'buildslaves'])
+                                                  'workers'])
         master = fakemaster.make_master()
         master.config.db['db_url'] = self.db_url
         self.db = DBConnector(self.basedir)
@@ -128,7 +150,8 @@ class TestCleanupDb(misc.StdoutAssertionsMixin, dirs.DirsMixin,
             res = yield cleanupdb._cleanupDatabase(mkconfig(basedir='basedir'))
             self.assertEqual(res, 0)
 
-            # make sure the compression don't change the data we can retrieve via api
+            # make sure the compression don't change the data we can retrieve
+            # via api
             res = yield self.db.logs.getLogLines(logid, 0, 2000)
             self.assertEqual(res, LOGDATA)
 
@@ -140,7 +163,8 @@ class TestCleanupDb(misc.StdoutAssertionsMixin, dirs.DirsMixin,
                 return sum([len(row.content) for row in conn.execute(q)])
             lengths[mode] = yield self.db.pool.do(thd)
 
-        self.assertDictAlmostEqual(lengths, {'raw': 5999, 'bz2': 44, 'lz4': 40, 'gz': 31})
+        self.assertDictAlmostEqual(
+            lengths, {'raw': 5999, 'bz2': 44, 'lz4': 40, 'gz': 31})
 
     def assertDictAlmostEqual(self, d1, d2):
         # The test shows each methods return different size

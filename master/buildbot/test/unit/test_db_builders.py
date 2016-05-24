@@ -12,6 +12,8 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+from twisted.internet import defer
+from twisted.trial import unittest
 
 from buildbot.db import builders
 from buildbot.db import tags
@@ -20,8 +22,6 @@ from buildbot.test.fake import fakemaster
 from buildbot.test.util import connector_component
 from buildbot.test.util import interfaces
 from buildbot.test.util import validation
-from twisted.internet import defer
-from twisted.trial import unittest
 
 
 class Tests(interfaces.InterfaceTests):
@@ -194,9 +194,12 @@ class Tests(interfaces.InterfaceTests):
         for builderdict in builderlist:
             validation.verifyDbDict(self, 'builderdict', builderdict)
         self.assertEqual(sorted(builderlist), sorted([
-            dict(id=7, name='some:builder', masterids=[3], tags=[], description=None),
-            dict(id=8, name='other:builder', masterids=[3, 4], tags=[], description=None),
-            dict(id=9, name='third:builder', masterids=[], tags=[], description=None),
+            dict(id=7, name='some:builder', masterids=[
+                 3], tags=[], description=None),
+            dict(id=8, name='other:builder', masterids=[
+                 3, 4], tags=[], description=None),
+            dict(id=9, name='third:builder',
+                 masterids=[], tags=[], description=None),
         ]))
 
     @defer.inlineCallbacks
@@ -215,8 +218,10 @@ class Tests(interfaces.InterfaceTests):
         for builderdict in builderlist:
             validation.verifyDbDict(self, 'builderdict', builderdict)
         self.assertEqual(sorted(builderlist), sorted([
-            dict(id=7, name='some:builder', masterids=[3], tags=[], description=None),
-            dict(id=8, name='other:builder', masterids=[3, 4], tags=[], description=None),
+            dict(id=7, name='some:builder', masterids=[
+                 3], tags=[], description=None),
+            dict(id=8, name='other:builder', masterids=[
+                 3, 4], tags=[], description=None),
         ]))
 
     @defer.inlineCallbacks

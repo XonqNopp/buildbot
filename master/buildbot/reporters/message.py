@@ -1,13 +1,14 @@
-import jinja2
 import os
 
-from buildbot.reporters import utils
+import jinja2
+
 from buildbot.process.results import CANCELLED
 from buildbot.process.results import EXCEPTION
 from buildbot.process.results import FAILURE
 from buildbot.process.results import SUCCESS
 from buildbot.process.results import WARNINGS
 from buildbot.process.results import statusToString
+from buildbot.reporters import utils
 
 
 class MessageFormatter(object):
@@ -22,7 +23,8 @@ class MessageFormatter(object):
             template_dir = os.path.join(os.path.dirname(__file__), "templates")
 
         loader = jinja2.FileSystemLoader(template_dir)
-        self.env = jinja2.Environment(loader=loader, undefined=jinja2.StrictUndefined)
+        self.env = jinja2.Environment(
+            loader=loader, undefined=jinja2.StrictUndefined)
 
         if template_name is not None:
             self.template_name = template_name
@@ -116,13 +118,16 @@ class MessageFormatter(object):
         cxt = dict(results=build['results'],
                    mode=mode,
                    buildername=buildername,
-                   slavename=build['properties'].get('slavename', ["<unknown>"])[0],
+                   workername=build['properties'].get(
+                       'workername', ["<unknown>"])[0],
                    buildset=buildset,
                    build=build,
                    projects=self.getProjects(ss_list, master),
                    previous_results=previous_results,
-                   status_detected=self.getDetectedStatus(mode, results, previous_results),
-                   build_url=utils.getURLForBuild(master, build['builder']['builderid'], build['number']),
+                   status_detected=self.getDetectedStatus(
+                       mode, results, previous_results),
+                   build_url=utils.getURLForBuild(
+                       master, build['builder']['builderid'], build['number']),
                    buildbot_url=master.config.buildbotURL,
                    blamelist=blamelist,
                    summary=self.messageSummary(build, results),

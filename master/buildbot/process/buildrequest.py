@@ -12,20 +12,21 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+import calendar
+
 from future.utils import iteritems
 from future.utils import itervalues
-
-import calendar
+from twisted.internet import defer
 
 from buildbot.data import resultspec
 from buildbot.process import properties
 from buildbot.process.results import SKIPPED
-from twisted.internet import defer
 
 
 class BuildRequestCollapser(object):
     # brids is a list of the new added buildrequests id
-    # This class is called before generated the 'new' event for the buildrequest
+    # This class is called before generated the 'new' event for the
+    # buildrequest
 
     # Before adding new buildset/buildrequests, we must examine each unclaimed
     # buildrequest.
@@ -78,7 +79,7 @@ class BuildRequestCollapser(object):
                 if unclaim_br['buildrequestid'] == br['buildrequestid']:
                     continue
 
-                canCollapse = yield collapseRequestsFn(bldr, br, unclaim_br)
+                canCollapse = yield collapseRequestsFn(self.master, bldr, br, unclaim_br)
                 if canCollapse is True:
                     collapseBRs.append(unclaim_br)
 
@@ -97,7 +98,8 @@ class TempSourceStamp(object):
     # temporary fake sourcestamp; attributes are added below
 
     def asDict(self):
-        # This return value should match the kwargs to SourceStampsConnectorComponent.findSourceStampId
+        # This return value should match the kwargs to
+        # SourceStampsConnectorComponent.findSourceStampId
         result = vars(self).copy()
 
         del result['ssid']
@@ -105,8 +107,10 @@ class TempSourceStamp(object):
 
         if 'patch' in result and result['patch'] is None:
             result['patch'] = (None, None, None)
-        result['patch_level'], result['patch_body'], result['patch_subdir'] = result.pop('patch')
-        result['patch_author'], result['patch_comment'] = result.pop('patch_info')
+        result['patch_level'], result['patch_body'], result[
+            'patch_subdir'] = result.pop('patch')
+        result['patch_author'], result[
+            'patch_comment'] = result.pop('patch_info')
 
         assert all(
             isinstance(val, (unicode, type(None), int))
@@ -205,11 +209,13 @@ class BuildRequest(object):
         # fetch the buildset properties, and convert to Properties
         buildset_properties = yield master.db.buildsets.getBuildsetProperties(brdict['buildsetid'])
 
-        buildrequest.properties = properties.Properties.fromDict(buildset_properties)
+        buildrequest.properties = properties.Properties.fromDict(
+            buildset_properties)
 
         # make a fake sources dict (temporary)
         bsdata = yield master.data.get(('buildsets', str(buildrequest.bsid)))
-        assert bsdata['sourcestamps'], "buildset must have at least one sourcestamp"
+        assert bsdata[
+            'sourcestamps'], "buildset must have at least one sourcestamp"
         buildrequest.sources = {}
         for ssdata in bsdata['sourcestamps']:
             ss = buildrequest.sources[ssdata['codebase']] = TempSourceStamp()
@@ -298,7 +304,8 @@ class BuildRequest(object):
             for other in others:
                 if codebase in other.sources:
                     all_sources.append(other.sources[codebase])
-            assert len(all_sources) > 0, "each codebase should have atleast one sourcestamp"
+            assert len(
+                all_sources) > 0, "each codebase should have atleast one sourcestamp"
 
             # TODO: select the sourcestamp that best represents the merge,
             # preferably the latest one.  This used to be accomplished by

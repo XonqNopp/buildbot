@@ -12,16 +12,15 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright  Team Members
-from future.utils import itervalues
-
-from buildbot.util import json
-from buildbot.util import toJson
-from twisted.internet import defer
-from twisted.python import log
-
 from autobahn.twisted.resource import WebSocketResource
 from autobahn.twisted.websocket import WebSocketServerFactory
 from autobahn.twisted.websocket import WebSocketServerProtocol
+from future.utils import itervalues
+from twisted.internet import defer
+from twisted.python import log
+
+from buildbot.util import json
+from buildbot.util import toJson
 
 
 class WsProtocol(WebSocketServerProtocol):
@@ -88,7 +87,8 @@ class WsProtocol(WebSocketServerProtocol):
 
         qref = yield self.master.mq.startConsuming(callback, self.parsePath(path))
 
-        if path in self.qrefs or self.qrefs is None:  # race conditions handling
+        # race conditions handling
+        if path in self.qrefs or self.qrefs is None:
             qref.stopConsuming()
 
         self.qrefs[path] = qref

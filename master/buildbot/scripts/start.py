@@ -17,13 +17,16 @@ from __future__ import print_function
 import os
 import sys
 
-from buildbot.scripts import base
-from buildbot.scripts.logwatcher import BuildmasterTimeoutError
-from buildbot.scripts.logwatcher import LogWatcher
-from buildbot.scripts.logwatcher import ReconfigError
 from twisted.internet import protocol
 from twisted.internet import reactor
 from twisted.python.runtime import platformType
+
+from buildbot.scripts import base
+from buildbot.scripts.logwatcher import BuildmasterStartupError
+from buildbot.scripts.logwatcher import BuildmasterTimeoutError
+from buildbot.scripts.logwatcher import LogWatcher
+from buildbot.scripts.logwatcher import ReconfigError
+from buildbot.util import rewrap
 
 
 class Follower:
@@ -44,22 +47,29 @@ class Follower:
 
     def _failure(self, why):
         if why.check(BuildmasterTimeoutError):
-            print("""
-The buildmaster took more than 10 seconds to start, so we were unable to
-confirm that it started correctly. Please 'tail twistd.log' and look for a
-line that says 'BuildMaster is running' to verify correct startup.
-""")
+            print(rewrap("""\
+                The buildmaster took more than 10 seconds to start, so we were
+                unable to confirm that it started correctly.
+                Please 'tail twistd.log' and look for a line that says
+                'BuildMaster is running' to verify correct startup.
+                """))
         elif why.check(ReconfigError):
-            print("""
-The buildmaster appears to have encountered an error in the master.cfg config
-file during startup. Please inspect and fix master.cfg, then restart the
-buildmaster.
-""")
+            print(rewrap("""\
+                The buildmaster appears to have encountered an error in the
+                master.cfg config file during startup.
+                Please inspect and fix master.cfg, then restart the
+                buildmaster.
+                """))
+        elif why.check(BuildmasterStartupError):
+            print(rewrap("""\
+                The buildmaster startup failed. Please see 'twistd.log' for
+                possible reason.
+                """))
         else:
-            print("""
-Unable to confirm that the buildmaster started correctly. You may need to
-stop it, fix the config file, and restart.
-""")
+            print(rewrap("""\
+                Unable to confirm that the buildmaster started correctly.
+                You may need to stop it, fix the config file, and restart.
+                """))
             print(why)
         self.rc = 1
         reactor.stop()
@@ -101,7 +111,8 @@ def launch(config):
             "--python=buildbot.tac"]
 
     # ProcessProtocol just ignores all output
-    reactor.spawnProcess(protocol.ProcessProtocol(), sys.executable, argv, env=os.environ)
+    reactor.spawnProcess(
+        protocol.ProcessProtocol(), sys.executable, argv, env=os.environ)
 
 
 def start(config):

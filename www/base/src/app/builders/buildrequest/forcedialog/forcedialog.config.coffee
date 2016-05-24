@@ -3,11 +3,12 @@ class State extends Config
         $stateProvider.state "builder.forcebuilder",
             url: "/force/:scheduler",
             ### @ngInject ###
-            onEnter: ($stateParams, $state, $modal) ->
+            onEnter: ($stateParams, $state, $uibModal) ->
                 modal = {}
-                modal.modal = $modal.open
+                modal.modal = $uibModal.open
                     templateUrl: "views/forcedialog.html"
                     controller: 'forceDialogController'
+                    windowClass: 'modal-xlg'
                     resolve:
                         builderid: -> $stateParams.builder
                         schedulerid: -> $stateParams.scheduler

@@ -12,8 +12,6 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
-
 from twisted.application import internet
 from twisted.internet import task
 from twisted.python import log
@@ -50,7 +48,8 @@ class IrcStatusBot(StatusBot, irc.IRCClient):
         self.pm_to_nicks = pm_to_nicks
         self.password = password
         self.hasQuit = 0
-        self._keepAliveCall = task.LoopingCall(lambda: self.ping(self.nickname))
+        self._keepAliveCall = task.LoopingCall(
+            lambda: self.ping(self.nickname))
 
     def connectionMade(self):
         irc.IRCClient.connectionMade(self)
@@ -200,10 +199,10 @@ class IRC(service.BuildbotService):
     name = "IRC"
     in_test_harness = False
     f = None
-    compare_attrs = ["host", "port", "nick", "password",
+    compare_attrs = ("host", "port", "nick", "password",
                      "channels", "pm_to_nicks", "allowForce", "useSSL",
                      "useRevisions", "tags", "useColors",
-                     "lostDelay", "failedDelay", "allowShutdown"]
+                     "lostDelay", "failedDelay", "allowShutdown")
 
     def checkConfig(self, host, nick, channels, pm_to_nicks=None, port=6667,
                     allowForce=False, tags=None, password=None, notify_events=None,
@@ -218,7 +217,8 @@ class IRC(service.BuildbotService):
         if allowForce not in (True, False):
             config.error("allowForce must be boolean, not %r" % (allowForce,))
         if allowShutdown not in (True, False):
-            config.error("allowShutdown must be boolean, not %r" % (allowShutdown,))
+            config.error("allowShutdown must be boolean, not %r" %
+                         (allowShutdown,))
 
     def reconfigService(self, host, nick, channels, pm_to_nicks=None, port=6667,
                         allowForce=False, tags=None, password=None, notify_events=None,
@@ -245,7 +245,8 @@ class IRC(service.BuildbotService):
         self.allowShutdown = allowShutdown
 
         # This function is only called in case of reconfig with changes
-        # We don't try to be smart here. Just restart the bot if config has changed.
+        # We don't try to be smart here. Just restart the bot if config has
+        # changed.
         if self.f is not None:
             self.f.shutdown()
         self.f = IrcStatusFactory(self.nick, self.password,

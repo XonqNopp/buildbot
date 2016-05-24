@@ -12,10 +12,15 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import os
 import pprint
 import sys
+
+from twisted.internet import error
+from twisted.internet import reactor
+from twisted.python import failure
+from twisted.python import runtime
+from twisted.trial import unittest
 
 from buildbot.process.properties import Interpolate
 from buildbot.process.properties import WithProperties
@@ -24,27 +29,24 @@ from buildbot.process.results import FAILURE
 from buildbot.process.results import SUCCESS
 from buildbot.steps import master
 from buildbot.test.util import steps
-from twisted.internet import error
-from twisted.internet import reactor
-from twisted.python import failure
-from twisted.python import runtime
-from twisted.trial import unittest
+
+_COMSPEC_ENV = 'COMSPEC'
 
 
 class TestMasterShellCommand(steps.BuildStepMixin, unittest.TestCase):
 
     def setUp(self):
         if runtime.platformType == 'win32':
-            self.comspec = os.environ.get('COMPSPEC')
-            os.environ['COMSPEC'] = r'C:\WINDOWS\system32\cmd.exe'
+            self.comspec = os.environ.get(_COMSPEC_ENV)
+            os.environ[_COMSPEC_ENV] = r'C:\WINDOWS\system32\cmd.exe'
         return self.setUpBuildStep()
 
     def tearDown(self):
         if runtime.platformType == 'win32':
             if self.comspec:
-                os.environ['COMSPEC'] = self.comspec
+                os.environ[_COMSPEC_ENV] = self.comspec
             else:
-                del os.environ['COMSPEC']
+                del os.environ[_COMSPEC_ENV]
         return self.tearDownBuildStep()
 
     def patchSpawnProcess(self, exp_cmd, exp_argv, exp_path, exp_usePTY,
@@ -211,11 +213,15 @@ class TestSetProperty(steps.BuildStepMixin, unittest.TestCase):
         return self.tearDownBuildStep()
 
     def test_simple(self):
-        self.setupStep(master.SetProperty(property="testProperty", value=Interpolate("sch=%(prop:scheduler)s, slave=%(prop:slavename)s")))
-        self.properties.setProperty('scheduler', 'force', source='SetProperty', runtime=True)
-        self.properties.setProperty('slavename', 'testSlave', source='SetProperty', runtime=True)
+        self.setupStep(master.SetProperty(property="testProperty", value=Interpolate(
+            "sch=%(prop:scheduler)s, worker=%(prop:workername)s")))
+        self.properties.setProperty(
+            'scheduler', 'force', source='SetProperty', runtime=True)
+        self.properties.setProperty(
+            'workername', 'testWorker', source='SetProperty', runtime=True)
         self.expectOutcome(result=SUCCESS, state_string="Set")
-        self.expectProperty('testProperty', 'sch=force, slave=testSlave', source='SetProperty')
+        self.expectProperty(
+            'testProperty', 'sch=force, worker=testWorker', source='SetProperty')
         return self.runStep()
 
 
@@ -228,9 +234,13 @@ class TestLogRenderable(steps.BuildStepMixin, unittest.TestCase):
         return self.tearDownBuildStep()
 
     def test_simple(self):
-        self.setupStep(master.LogRenderable(content=Interpolate('sch=%(prop:scheduler)s, slave=%(prop:slavename)s')))
-        self.properties.setProperty('scheduler', 'force', source='TestSetProperty', runtime=True)
-        self.properties.setProperty('slavename', 'testSlave', source='TestSetProperty', runtime=True)
+        self.setupStep(master.LogRenderable(
+            content=Interpolate('sch=%(prop:scheduler)s, worker=%(prop:workername)s')))
+        self.properties.setProperty(
+            'scheduler', 'force', source='TestSetProperty', runtime=True)
+        self.properties.setProperty(
+            'workername', 'testWorker', source='TestSetProperty', runtime=True)
         self.expectOutcome(result=SUCCESS, state_string='Logged')
-        self.expectLogfile('Output', pprint.pformat('sch=force, slave=testSlave'))
+        self.expectLogfile(
+            'Output', pprint.pformat('sch=force, worker=testWorker'))
         return self.runStep()

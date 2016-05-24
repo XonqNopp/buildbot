@@ -12,10 +12,9 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+import re
 
 from twisted.trial import unittest
-
-import re
 
 from buildbot.steps.shell import WarningCountingShellCommand
 
@@ -24,11 +23,13 @@ class TestWarningCountingShellCommand(unittest.TestCase):
 
     # Makes sure that it is possible to supress warnings even if the
     # warning extractor does not provie line information
+
     def testSuppressingLinelessWarningsPossible(self):
         # Use a warningExtractor that does not provide line
         # information
         w = WarningCountingShellCommand(
-            warningExtractor=WarningCountingShellCommand.warnExtractWholeLine)
+            warningExtractor=WarningCountingShellCommand.warnExtractWholeLine,
+            command="echo")
 
         # Add suppression manually instead of using suppressionFile
         fileRe = None

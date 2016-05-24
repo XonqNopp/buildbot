@@ -22,19 +22,20 @@ Standard setup script.
 import glob
 import os
 import sys
-
-from buildbot import version
-from distutils.core import setup
-from distutils.version import LooseVersion
-import pkg_resources
-
 from distutils.command.install_data import install_data
 from distutils.command.sdist import sdist
+from distutils.core import setup
+from distutils.version import LooseVersion
+
+import pkg_resources
+
+from buildbot import version
 
 if "bdist_wheel" in sys.argv:
     BUILDING_WHEEL = True
 else:
     BUILDING_WHEEL = False
+
 
 def include(d, e):
     """Generate a pair of (directory, file-list) for installation.
@@ -151,8 +152,8 @@ setup_args = {
 
     'packages': [
         "buildbot",
-        "buildbot.buildslave",
-        "buildbot.buildslave.protocols",
+        "buildbot.worker",
+        "buildbot.worker.protocols",
         "buildbot.changes",
         "buildbot.clients",
         "buildbot.data",
@@ -202,6 +203,8 @@ setup_args = {
             "buildbot/scripts/sample.cfg",
             "buildbot/scripts/buildbot_tac.tmpl",
         ]),
+        include("buildbot/spec", "*.raml"),
+        include("buildbot/spec/types", "*.raml"),
     ] + include_statics("buildbot/www/static"),
     'scripts': scripts,
     'cmdclass': {'install_data': install_data_twisted,
@@ -232,13 +235,13 @@ setup_args = {
             ('buildbot.schedulers.trysched', [
                 'Try_Jobdir', 'Try_Userpass'])
         ]),
-        ('buildbot.buildslave', [
-            ('buildbot.buildslave.base', ['BuildSlave']),
-            ('buildbot.buildslave.ec2', ['EC2LatentBuildSlave']),
-            ('buildbot.buildslave.libvirt', ['LibVirtSlave']),
-            ('buildbot.buildslave.openstack', ['OpenStackLatentBuildSlave']),
-            ('buildbot.buildslave.docker', ['DockerLatentBuildSlave']),
-            ('buildbot.buildslave.local', ['LocalBuildSlave']),
+        ('buildbot.worker', [
+            ('buildbot.worker.base', ['Worker']),
+            ('buildbot.worker.ec2', ['EC2LatentWorker']),
+            ('buildbot.worker.libvirt', ['LibVirtWorker']),
+            ('buildbot.worker.openstack', ['OpenStackLatentWorker']),
+            ('buildbot.worker.docker', ['DockerLatentWorker']),
+            ('buildbot.worker.local', ['LocalWorker']),
         ]),
         ('buildbot.steps', [
             ('buildbot.process.buildstep', ['BuildStep']),
@@ -268,7 +271,7 @@ setup_args = {
                 'Configure', 'WarningCountingShellCommand', 'Compile',
                 'Test', 'PerlModuleTest']),
             ('buildbot.steps.shellsequence', ['ShellSequence']),
-            ('buildbot.steps.slave', [
+            ('buildbot.steps.worker', [
                 'SetPropertiesFromEnv', 'FileExists', 'CopyDirectory',
                 'RemoveDirectory', 'MakeDirectory']),
             ('buildbot.steps.source.bzr', ['Bzr']),
@@ -295,12 +298,15 @@ setup_args = {
         ('buildbot.reporters', [
             ('buildbot.reporters.mail', ['MailNotifier']),
             ('buildbot.reporters.gerrit', ['GerritStatusPush']),
+            ('buildbot.reporters.http', ['HttpStatusPush']),
+            ('buildbot.reporters.github', ['GithubStatusPush']),
+            ('buildbot.reporters.stash', ['StashStatusPush']),
             ('buildbot.reporters.irc', ['IRC']),
 
         ]),
         ('buildbot.util', [
             # Connection seems to be a way too generic name, though
-            ('buildbot.buildslave.libvirt', ['Connection']),
+            ('buildbot.worker.libvirt', ['Connection']),
             ('buildbot.changes.filter', ['ChangeFilter']),
             ('buildbot.changes.gerritchangesource', ['GerritChangeFilter']),
             ('buildbot.changes.svnpoller', [
@@ -309,10 +315,15 @@ setup_args = {
                 ('svn.split_file_branches', 'split_file_branches'),
                 ('svn.split_file_alwaystrunk', 'split_file_alwaystrunk')]),
             ('buildbot.config', ['BuilderConfig']),
-            ('buildbot.locks', ['MasterLock', 'SlaveLock']),
+            ('buildbot.locks', [
+                'MasterLock',
+                'WorkerLock',
+            ]),
             ('buildbot.manhole', [
                 'AuthorizedKeysManhole', 'PasswordManhole', 'TelnetManhole']),
-            ('buildbot.process.builder', ['enforceChosenSlave']),
+            ('buildbot.process.builder', [
+                'enforceChosenWorker',
+            ]),
             ('buildbot.process.factory', [
                 'BuildFactory', 'GNUAutoconf', 'CPAN', 'Distutils', 'Trial',
                 'BasicBuildFactory', 'QuickBuildFactory', 'BasicSVN']),
@@ -323,12 +334,15 @@ setup_args = {
             ('buildbot.process.properties', [
                 'CommandlineUserManager']),
             ('buildbot.revlinks', ['RevlinkMatch']),
+            ('buildbot.reporters.utils', ['URLForBuild']),
             ('buildbot.schedulers.forcesched', [
                 'AnyPropertyParameter', 'BooleanParameter',
-                'BuildslaveChoiceParameter', 'ChoiceStringParameter',
+                'ChoiceStringParameter',
                 'CodebaseParameter', 'FixedParameter', 'InheritBuildParameter',
                 'IntParameter', 'NestedParameter', 'ParameterGroup',
-                'StringParameter', 'TextParameter', 'UserNameParameter']),
+                'StringParameter', 'TextParameter', 'UserNameParameter',
+                'WorkerChoiceParameter',
+            ]),
             ('buildbot.process.results', [
                 'Results', 'SUCCESS', 'WARNINGS', 'FAILURE', 'SKIPPED',
                 'EXCEPTION', 'RETRY', 'CANCELLED']),
@@ -342,9 +356,9 @@ setup_args = {
             ('buildbot.www.avatar', ['AvatarGravatar']),
             ('buildbot.www.auth', [
                 'UserPasswordAuth', 'HTPasswdAuth', 'RemoteUserAuth']),
-            ('buildbot.www.ldapuserinfos', ['LdapUserInfo']),
+            ('buildbot.www.ldapuserinfo', ['LdapUserInfo']),
             ('buildbot.www.oauth2', [
-                'GoogleAuth', 'GitHubAuth']),
+                'GoogleAuth', 'GitHubAuth', 'GitLabAuth']),
             ('buildbot.db.dbconfig', [
                 'DbConfig']),
             ('buildbot.www.authz', [
@@ -361,7 +375,8 @@ setup_args = {
 if sys.platform == "win32":
     setup_args['zip_safe'] = False
 
-py_26 = sys.version_info[0] > 2 or (sys.version_info[0] == 2 and sys.version_info[1] >= 6)
+py_26 = sys.version_info[0] > 2 or (
+    sys.version_info[0] == 2 and sys.version_info[1] >= 6)
 if not py_26:
     raise RuntimeError("Buildbot master requires at least Python-2.6")
 
@@ -384,42 +399,100 @@ if 'a' in version or 'b' in version:
             raise RuntimeError(VERSION_MSG)
 
 if sys.version_info[:2] == (2, 6):
-    # Twisted-15.4.0 doesn't support Python 2.6 anymore
-    twisted_req = "Twisted >= 12.1.0, < 15.4.0"
+    # Twisted-15.4.0, txaio >=2.3.0 and autobahn >=0.13.0 don't support Python
+    # 2.6 anymore
+    twisted_ver = ">= 14.0.1, < 15.4.0"
+    autobahn_ver = ">= 0.10.2, < 0.13.0"
+    txaio_ver = "== 2.2.2"
+
 else:
-    twisted_req = "Twisted >= 12.1.0"
+    twisted_ver = ">= 14.0.1"
+    autobahn_ver = ">= 0.10.2"
+    txaio_ver = ">= 2.2.2"
+
+bundle_version = version.split("-")[0]
 
 try:
     # If setuptools is installed, then we'll add setuptools-specific arguments
     # to the setup args.
-    import setuptools  # @UnusedImport
+    import setuptools
+    [setuptools]
 except ImportError:
     pass
 else:
     # dependencies
     setup_args['install_requires'] = [
-        twisted_req,
+        'Twisted ' + twisted_ver,
         'Jinja2 >= 2.1',
-        'zope.interface >= 4.1.1',  # required for tests, but Twisted requires this anyway
+        # required for tests, but Twisted requires this anyway
+        'zope.interface >= 4.1.1',
         'future',
         'sqlalchemy>=0.8.0',
         'sqlalchemy-migrate>=0.9',
         'python-dateutil>=1.5',
-        'autobahn >= 0.10.2',
+        'txaio ' + txaio_ver,
+        'autobahn ' + autobahn_ver,
     ]
+
+    # Unit test dependencies.
+    test_deps = [
+        'txrequests',
+        'future',
+        'pyjade',
+        'boto',
+        'boto3',
+        'moto',
+        'txgithub',
+        'ramlfications',
+        'mock',
+    ]
+    if sys.platform != 'win32':
+        test_deps += [
+            # LZ4 fails to build on Windows:
+            # https://github.com/steeve/python-lz4/issues/27
+            'lz4',
+        ]
+
+    setup_args['tests_require'] = test_deps
 
     setup_args['extras_require'] = {
         'test': [
-            'mock',
+            'setuptools_trial',
             'pep8',
+            'isort',
             'pylint==1.1.0',
             'pyflakes',
-        ],
+        ] + test_deps,
         'bundle': [
-            'buildbot-www',
-            'buildbot-slave'
-        ]
+            "buildbot-www=={0}".format(bundle_version),
+            "buildbot-worker=={0}".format(bundle_version),
+            "buildbot-waterfall-view=={0}".format(bundle_version),
+            "buildbot-console-view=={0}".format(bundle_version),
+        ],
+        'tls': [
+            'Twisted[tls] ' + twisted_ver,
+            # There are bugs with extras inside extras:
+            # <https://github.com/pypa/pip/issues/3516>
+            # so we explicitly include Twisted[tls] dependencies.
+            'pyopenssl >= 0.13',
+            'service_identity',
+            'idna >= 0.6',
+        ],
+        'docs': [
+            'sphinx',
+            'sphinxcontrib-blockdiag',
+            'sphinxcontrib-spelling',
+            'pyenchant',
+            'docutils>=0.8',
+            'ramlfications',
+            'sphinx-jinja',
+        ],
     }
+
+    if '--help-commands' in sys.argv or 'trial' in sys.argv or 'test' in sys.argv:
+        setup_args['setup_requires'] = [
+            'setuptools_trial',
+        ]
 
     if os.getenv('NO_INSTALL_REQS'):
         setup_args['install_requires'] = None

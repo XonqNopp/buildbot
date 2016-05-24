@@ -12,9 +12,9 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
-from buildbot.buildslave.protocols import base
 from twisted.internet import defer
+
+from buildbot.worker.protocols import base
 
 
 class FakeConnection(base.Connection):
@@ -37,8 +37,8 @@ class FakeConnection(base.Connection):
         self.remoteCalls.append(('remotePrint', message))
         return defer.succeed(None)
 
-    def remoteGetSlaveInfo(self):
-        self.remoteCalls.append(('remoteGetSlaveInfo',))
+    def remoteGetWorkerInfo(self):
+        self.remoteCalls.append(('remoteGetWorkerInfo',))
         return defer.succeed(self.slaveInfo)
 
     def remoteSetBuilderList(self, builders):
@@ -60,5 +60,6 @@ class FakeConnection(base.Connection):
         return defer.succeed(None)
 
     def remoteInterruptCommand(self, builderName, commandId, why):
-        self.remoteCalls.append(('remoteInterruptCommand', builderName, commandId, why))
+        self.remoteCalls.append(
+            ('remoteInterruptCommand', builderName, commandId, why))
         return defer.succeed(None)

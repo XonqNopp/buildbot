@@ -12,11 +12,13 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+import os
 
 import migrate
 import migrate.versioning.api
-import os
 import sqlalchemy as sa
+from twisted.internet import defer
+from twisted.python import log
 
 from buildbot.db import connector
 from buildbot.test.fake import fakemaster
@@ -24,8 +26,6 @@ from buildbot.test.util import db
 from buildbot.test.util import dirs
 from buildbot.test.util import querylog
 from buildbot.util import sautils
-from twisted.internet import defer
-from twisted.python import log
 
 
 # test_upgrade vs. migration tests
@@ -75,13 +75,15 @@ class MigrateTestMixin(db.RealDatabaseMixin, dirs.DirsMixin):
         d.addCallback(lambda _: self.db.pool.do(setup_thd))
 
         def upgrade_thd(engine):
-            querylog.log_from_engine(engine)
-            schema = migrate.versioning.schema.ControlledSchema(engine,
-                                                                self.db.model.repo_path)
-            changeset = schema.changeset(target_version)
-            for version, change in changeset:
-                log.msg('upgrading to schema version %d' % (version + 1))
-                schema.runchange(version, change, 1)
+            with querylog.log_queries():
+                schema = migrate.versioning.schema.ControlledSchema(
+                    engine, self.db.model.repo_path)
+                changeset = schema.changeset(target_version)
+                with sautils.withoutSqliteForeignKeys(engine):
+                    for version, change in changeset:
+                        log.msg('upgrading to schema version %d' %
+                                (version + 1))
+                        schema.runchange(version, change, 1)
         d.addCallback(lambda _: self.db.pool.do_with_engine(upgrade_thd))
 
         def check_table_charsets_thd(engine):

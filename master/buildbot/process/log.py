@@ -12,14 +12,14 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-from future.utils import itervalues
-
 import re
+
+from future.utils import itervalues
+from twisted.internet import defer
+from twisted.python import log
 
 from buildbot import util
 from buildbot.util import lineboundaries
-from twisted.internet import defer
-from twisted.python import log
 
 
 class Log(object):
@@ -71,9 +71,7 @@ class Log(object):
         # formatted for the log type, and newline-terminated
         assert lines[-1] == '\n'
         assert not self.finished
-        yield self.lock.acquire()
-        yield self.master.data.updates.appendLog(self.logid, lines)
-        yield self.lock.release()
+        yield self.lock.run(lambda: self.master.data.updates.appendLog(self.logid, lines))
 
     # completion
 
@@ -91,11 +89,11 @@ class Log(object):
     @defer.inlineCallbacks
     def finish(self):
         assert not self.finished
-        yield self.lock.acquire()
-        self.finished = True
-        yield self.master.data.updates.finishLog(self.logid)
-        yield self.lock.release()
 
+        def fToRun():
+            self.finished = True
+            return self.master.data.updates.finishLog(self.logid)
+        yield self.lock.run(fToRun)
         # notify subscribers *after* finishing the log
         self.subPoint.deliver(None, None)
 
@@ -106,7 +104,8 @@ class Log(object):
         # start a compressLog call but don't make our caller wait for
         # it to complete
         d = self.master.data.updates.compressLog(self.logid)
-        d.addErrback(log.err, "while compressing log %d (ignored)" % self.logid)
+        d.addErrback(
+            log.err, "while compressing log %d (ignored)" % self.logid)
 
 
 class PlainLog(Log):
@@ -123,7 +122,7 @@ class PlainLog(Log):
 
     def addContent(self, text):
         # add some text in the log's default stream
-        self.lbf.append(text)
+        return self.lbf.append(text)
 
     @defer.inlineCallbacks
     def finish(self):
@@ -164,7 +163,7 @@ class StreamLog(Log):
                 self.subPoint.deliver(stream, lines)
                 # strip the last character, as the regexp will add a
                 # prefix character after the trailing newline
-                self.addRawLines(self.pat.sub(stream, lines)[:-1])
+                return self.addRawLines(self.pat.sub(stream, lines)[:-1])
             lbf = self.lbfs[stream] = \
                 lineboundaries.LineBoundaryFinder(wholeLines)
             return lbf

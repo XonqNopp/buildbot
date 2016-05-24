@@ -12,17 +12,15 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import re
 import time
-
 from email.utils import formatdate
 
 from twisted.internet import defer
 from twisted.internet import reactor
 from twisted.python import log
 
-from buildbot.interfaces import BuildSlaveTooOldError
+from buildbot.interfaces import WorkerTooOldError
 from buildbot.process import buildstep
 from buildbot.process import remotecommand
 from buildbot.process.remotetransfer import StringFileWriter
@@ -68,7 +66,7 @@ class CVS(Source):
         @d.addCallback
         def checkInstall(cvsInstalled):
             if not cvsInstalled:
-                raise BuildSlaveTooOldError("CVS is not installed on slave")
+                raise WorkerTooOldError("CVS is not installed on worker")
             return 0
         d.addCallback(self.checkLogin)
 

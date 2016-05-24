@@ -12,23 +12,21 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
-import mock
 import os
 
-from buildbot import config
-from buildbot import master
-from buildbot import util
-from buildbot.clients import tryclient
-from buildbot.schedulers import trysched
-from buildbot.test.util import dirs
-from buildbot.test.util import www
+import mock
 from twisted.cred import credentials
 from twisted.internet import defer
 from twisted.internet import reactor
 from twisted.python import log
+from twisted.python.filepath import FilePath
 from twisted.spread import pb
-from twisted.trial import unittest
+
+from buildbot import util
+from buildbot.clients import tryclient
+from buildbot.schedulers import trysched
+from buildbot.test.util import www
+from buildbot.test.util.integration import RunMasterBase
 
 
 # wait for some asynchronous result
@@ -41,8 +39,8 @@ def waitFor(fn):
         yield util.asyncSleep(.01)
 
 
-class FakeRemoteSlave(pb.Referenceable):
-    # the bare minimum to connect to a master and convince it that the slave is
+class FakeRemoteWorker(pb.Referenceable):
+    # the bare minimum to connect to a master and convince it that the worker is
     # ready
 
     def __init__(self, port):
@@ -61,7 +59,7 @@ class FakeRemoteSlave(pb.Referenceable):
         self.mind.broker.transport.loseConnection()
         self.mind = None
 
-    # BuildSlave methods
+    # Worker methods
 
     def remote_print(self, message):
         log.msg("from master: %s" % (message,))
@@ -85,23 +83,11 @@ class FakeRemoteSlave(pb.Referenceable):
         return
 
 
-class Schedulers(dirs.DirsMixin, www.RequiresWwwMixin, unittest.TestCase):
+class Schedulers(RunMasterBase, www.RequiresWwwMixin):
 
     def setUp(self):
-        global BuildmasterConfig
-        BuildmasterConfig = {}
-        self.basedir = os.path.abspath('basedir')
-        self.setUpDirs(self.basedir)
-
-        self.configfile = os.path.join(self.basedir, 'master.cfg')
-        open(self.configfile, "w").write(
-            'from buildbot.test.integration.test_try_client \\\n'
-            'import masterConfig\n'
-            'BuildmasterConfig = masterConfig()\n')
-
         self.master = None
         self.sch = None
-        self.slave = None
 
         def spawnProcess(pp, executable, args, environ):
             tmpfile = os.path.join(self.jobdir, 'tmp', 'testy')
@@ -140,55 +126,23 @@ class Schedulers(dirs.DirsMixin, www.RequiresWwwMixin, unittest.TestCase):
             self.output.append(msg)
         self.patch(tryclient, 'output', output)
 
-    @defer.inlineCallbacks
-    def tearDown(self):
-        if self.slave:
-            log.msg("stopping slave")
-            yield self.slave.stop()
-        if self.master:
-            log.msg("stopping master")
-            yield self.master.stopService()
-            if self.master.db.pool:
-                log.msg("stopping master db pool")
-                yield self.master.db.pool.shutdown()
-        log.msg("tearDown complete")
-        yield self.tearDownDirs()
-
     def setupJobdir(self):
-        self.jobdir = os.path.join(self.basedir, 'jobs')
+        jobdir = FilePath(self.mktemp())
+        jobdir.createDirectory()
+        self.jobdir = jobdir.path
         for sub in 'new', 'tmp', 'cur':
-            p = os.path.join(self.jobdir, sub)
-            os.makedirs(p)
+            jobdir.child(sub).createDirectory()
         return self.jobdir
 
     @defer.inlineCallbacks
-    def startMaster(self, sch, startSlave=False):
-        BuildmasterConfig['schedulers'] = [sch]
+    def startMaster(self, sch, startWorker=False):
+        extra_config = {
+            'schedulers': [sch],
+            'status': [],
+        }
         self.sch = sch
 
-        BuildmasterConfig['status'] = []
-
-        # create the master and set its config
-        m = self.master = master.BuildMaster(self.basedir, self.configfile)
-        m.config = config.MasterConfig.loadConfig(
-            self.basedir, self.configfile)
-
-        # set up the db
-        yield m.db.setup(check_version=False)
-        yield m.db.model.create()
-
-        # stub out m.db.setup since it was already called above
-        m.db.setup = lambda: None
-
-        # mock reactor.stop (which trial *really* doesn't
-        # like test code to call!)
-        mock_reactor = mock.Mock(spec=reactor)
-        mock_reactor.callWhenRunning = reactor.callWhenRunning
-
-        # start the service
-        yield m.startService(_reactor=mock_reactor)
-        self.failIf(mock_reactor.stop.called,
-                    "startService tried to stop the reactor; check logs")
+        yield self.setupConfig(masterConfig(extra_config))
 
         # wait until the scheduler is active
         yield waitFor(lambda: self.sch.active)
@@ -203,11 +157,6 @@ class Schedulers(dirs.DirsMixin, www.RequiresWwwMixin, unittest.TestCase):
                 return True
             yield waitFor(getSchedulerPort)
 
-        # now start the fake slave
-        if startSlave:
-            self.slave = FakeRemoteSlave(self.serverPort)
-            yield self.slave.start()
-
     def runClient(self, config):
         self.clt = tryclient.Try(config)
         return self.clt.run(_inTests=True)
@@ -216,7 +165,7 @@ class Schedulers(dirs.DirsMixin, www.RequiresWwwMixin, unittest.TestCase):
     def test_userpass_no_wait(self):
         yield self.startMaster(
             trysched.Try_Userpass('try', ['a'], 0, [('u', 'p')]),
-            startSlave=False)
+            startWorker=False)
         yield self.runClient({
             'connect': 'pb',
             'master': '127.0.0.1:%s' % self.serverPort,
@@ -237,7 +186,7 @@ class Schedulers(dirs.DirsMixin, www.RequiresWwwMixin, unittest.TestCase):
     def test_userpass_wait(self):
         yield self.startMaster(
             trysched.Try_Userpass('try', ['a'], 0, [('u', 'p')]),
-            startSlave=True)
+            startWorker=True)
         yield self.runClient({
             'connect': 'pb',
             'master': '127.0.0.1:%s' % self.serverPort,
@@ -262,7 +211,7 @@ class Schedulers(dirs.DirsMixin, www.RequiresWwwMixin, unittest.TestCase):
     def test_userpass_list_builders(self):
         yield self.startMaster(
             trysched.Try_Userpass('try', ['a'], 0, [('u', 'p')]),
-            startSlave=False)
+            startWorker=False)
         yield self.runClient({
             'connect': 'pb',
             'get-builder-names': True,
@@ -283,7 +232,7 @@ class Schedulers(dirs.DirsMixin, www.RequiresWwwMixin, unittest.TestCase):
         jobdir = self.setupJobdir()
         yield self.startMaster(
             trysched.Try_Jobdir('try', ['a'], jobdir),
-            startSlave=False)
+            startWorker=False)
         yield self.runClient({
             'connect': 'ssh',
             'master': '127.0.0.1',
@@ -305,7 +254,7 @@ class Schedulers(dirs.DirsMixin, www.RequiresWwwMixin, unittest.TestCase):
         jobdir = self.setupJobdir()
         yield self.startMaster(
             trysched.Try_Jobdir('try', ['a'], jobdir),
-            startSlave=False)
+            startWorker=False)
         yield self.runClient({
             'connect': 'ssh',
             'wait': True,
@@ -323,12 +272,9 @@ class Schedulers(dirs.DirsMixin, www.RequiresWwwMixin, unittest.TestCase):
         buildsets = yield self.master.db.buildsets.getBuildsets()
         self.assertEqual(len(buildsets), 1)
 
-BuildmasterConfig = {}
 
-
-def masterConfig():
+def masterConfig(extra_config):
     c = {}
-    from buildbot.buildslave import BuildSlave
     from buildbot.config import BuilderConfig
     from buildbot.process.buildstep import BuildStep
     from buildbot.process.factory import BuildFactory
@@ -339,22 +285,20 @@ def masterConfig():
         def start(self):
             self.finished(results.SUCCESS)
 
-    c['slaves'] = [BuildSlave("local1", "localpw")]
-    c['slavePortnum'] = 0
     c['change_source'] = []
     c['schedulers'] = []  # filled in above
     f1 = BuildFactory()
     f1.addStep(MyBuildStep(name='one'))
     f1.addStep(MyBuildStep(name='two'))
     c['builders'] = [
-        BuilderConfig(name="a", slavenames=["local1"], factory=f1),
+        BuilderConfig(name="a", workernames=["local1"], factory=f1),
     ]
     c['status'] = []
     c['title'] = "test"
     c['titleURL'] = "test"
     c['buildbotURL'] = "http://localhost:8010/"
-    c['db'] = {'db_url': "sqlite:///state.sqlite"}
     c['mq'] = {'debug': True}
-    # test wants to influence the config, but we still return a new config each time
-    c.update(BuildmasterConfig)
+    # test wants to influence the config, but we still return a new config
+    # each time
+    c.update(extra_config)
     return c

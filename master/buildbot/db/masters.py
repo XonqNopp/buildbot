@@ -14,10 +14,10 @@
 # Copyright Buildbot Team Members
 
 import sqlalchemy as sa
+from twisted.internet import reactor
 
 from buildbot.db import base
 from buildbot.util import epoch2datetime
-from twisted.internet import reactor
 
 
 class MasterDict(dict):
@@ -53,7 +53,8 @@ class MastersConnectorComponent(base.DBConnectorComponent):
             was_active = bool(rows[0].active)
 
             if not active:
-                # if we're marking inactive, then delete any links to this master
+                # if we're marking inactive, then delete any links to this
+                # master
                 sch_mst_tbl = self.db.model.scheduler_masters
                 q = sch_mst_tbl.delete(
                     whereclause=(sch_mst_tbl.c.masterid == masterid))

@@ -12,29 +12,28 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-from future.utils import iteritems
-
-import mock
-
 from StringIO import StringIO
 
-from buildbot import config
-from buildbot.buildslave.base import BuildSlave
-from buildbot.process import builder
-from buildbot.process import buildrequest
-from buildbot.process import buildstep
-from buildbot.process import factory
-from buildbot.process import slavebuilder
-from buildbot.process import results
-from buildbot.steps import shell
-from buildbot.test.fake import fakedb
-from buildbot.test.fake import fakemaster
-from buildbot.test.fake import fakeprotocol
+import mock
+from future.utils import iteritems
 from twisted.internet import defer
 from twisted.internet import error
 from twisted.internet import reactor
 from twisted.python import failure
 from twisted.trial import unittest
+
+from buildbot import config
+from buildbot.process import builder
+from buildbot.process import buildrequest
+from buildbot.process import buildstep
+from buildbot.process import factory
+from buildbot.process import results
+from buildbot.process import workerforbuilder
+from buildbot.steps import shell
+from buildbot.test.fake import fakedb
+from buildbot.test.fake import fakemaster
+from buildbot.test.fake import fakeprotocol
+from buildbot.worker.base import Worker
 
 
 class TestLogObserver(buildstep.LogObserver):
@@ -118,7 +117,7 @@ class OldBuildEPYDoc(shell.ShellCommand):
     command = ['epydoc']
 
     def runCommand(self, cmd):
-        # we don't have a real buildslave in this test harness, so fake it
+        # we don't have a real worker in this test harness, so fake it
         l = cmd.logs['stdio']
         l.addStdout('some\noutput\n')
         return defer.succeed(None)
@@ -134,7 +133,7 @@ class OldPerlModuleTest(shell.Test):
     command = ['perl']
 
     def runCommand(self, cmd):
-        # we don't have a real buildslave in this test harness, so fake it
+        # we don't have a real worker in this test harness, so fake it
         l = cmd.logs['stdio']
         l.addStdout('a\nb\nc\n')
         return defer.succeed(None)
@@ -142,7 +141,8 @@ class OldPerlModuleTest(shell.Test):
     def evaluateCommand(self, cmd):
         # Get stdio, stripping pesky newlines etc.
         lines = map(
-            lambda line: line.replace('\r\n', '').replace('\r', '').replace('\n', ''),
+            lambda line: line.replace('\r\n', '').replace(
+                '\r', '').replace('\n', ''),
             self.getLog('stdio').readlines()
         )
         # .. the rest of this method isn't htat interesting, as long as the
@@ -168,24 +168,24 @@ class RunSteps(unittest.TestCase):
         self.factory = factory.BuildFactory()  # will have steps added later
         new_config = config.MasterConfig()
         new_config.builders.append(
-            config.BuilderConfig(name='test', slavename='testsl',
+            config.BuilderConfig(name='test', workername='testworker',
                                  factory=self.factory))
         yield self.builder.reconfigServiceWithBuildbotConfig(new_config)
 
-        self.slave = BuildSlave('bsl', 'pass')
-        self.slave.sendBuilderList = lambda: defer.succeed(None)
-        self.slave.parent = mock.Mock()
-        self.slave.master.botmaster = mock.Mock()
-        self.slave.botmaster.maybeStartBuildsForSlave = lambda sl: None
-        self.slave.botmaster.getBuildersForSlave = lambda sl: []
-        self.slave.parent = self.master
-        self.slave.startService()
-        self.conn = fakeprotocol.FakeConnection(self.master, self.slave)
-        yield self.slave.attached(self.conn)
+        self.worker = Worker('worker', 'pass')
+        self.worker.sendBuilderList = lambda: defer.succeed(None)
+        self.worker.parent = mock.Mock()
+        self.worker.master.botmaster = mock.Mock()
+        self.worker.botmaster.maybeStartBuildsForWorker = lambda w: None
+        self.worker.botmaster.getBuildersForWorker = lambda w: []
+        self.worker.parent = self.master
+        self.worker.startService()
+        self.conn = fakeprotocol.FakeConnection(self.master, self.worker)
+        yield self.worker.attached(self.conn)
 
-        sb = self.slavebuilder = slavebuilder.SlaveBuilder()
+        sb = self.workerforbuilder = workerforbuilder.WorkerForBuilder()
         sb.setBuilder(self.builder)
-        yield sb.attached(self.slave, {})
+        yield sb.attached(self.worker, {})
 
         # add the buildset/request
         self.bsid, brids = yield self.master.db.buildsets.addBuildset(
@@ -214,7 +214,7 @@ class RunSteps(unittest.TestCase):
 
         # start the builder
         self.failUnless((yield self.builder.maybeStartBuild(
-            self.slavebuilder, [self.buildrequest])))
+            self.workerforbuilder, [self.buildrequest])))
 
         # and wait for completion
         yield bfd
@@ -261,7 +261,8 @@ class RunSteps(unittest.TestCase):
             # 'stdout\n\xe2\x98\x83\nstderr\n',
             u'ostdout\no\N{SNOWMAN}\nestderr\n',
             u'obs':
-            # if slowDB, the observer wont see anything before the end of this instant step
+            # if slowDB, the observer wont see anything before the end of this
+            # instant step
             u'Observer saw []\n' if slowDB else
             # 'Observer saw [\'stdout\\n\', \'\\xe2\\x98\\x83\\n\']',
             u'Observer saw [u\'stdout\\n\', u\'\\u2603\\n\']\n',
@@ -301,7 +302,8 @@ class RunSteps(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_Latin1ProducingCustomBuildStep(self):
-        self.factory.addStep(Latin1ProducingCustomBuildStep(logEncoding='latin-1'))
+        self.factory.addStep(
+            Latin1ProducingCustomBuildStep(logEncoding='latin-1'))
         yield self.do_test_step()
         self.assertLogs({
             u'xx': u'o\N{CENT SIGN}\n',

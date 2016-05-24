@@ -12,32 +12,27 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
-
-"""Push events to gerrit
-
-."""
-from future.utils import iteritems
-
+"""
+Push events to Gerrit
+"""
 import time
-
 import warnings
-
-from buildbot.reporters import utils
-from buildbot.process.results import EXCEPTION
-from buildbot.process.results import FAILURE
-from buildbot.process.results import RETRY
-from buildbot.process.results import Results
-from buildbot.process.results import SUCCESS
-from buildbot.process.results import WARNINGS
-from buildbot.util import service
-
-
 from distutils.version import LooseVersion
+
+from future.utils import iteritems
 from twisted.internet import defer
 from twisted.internet import reactor
 from twisted.internet.protocol import ProcessProtocol
 from twisted.python import log
+
+from buildbot.process.results import EXCEPTION
+from buildbot.process.results import FAILURE
+from buildbot.process.results import RETRY
+from buildbot.process.results import SUCCESS
+from buildbot.process.results import WARNINGS
+from buildbot.process.results import Results
+from buildbot.reporters import utils
+from buildbot.util import service
 
 # Cache the version that the gerrit server is running for this many seconds
 GERRIT_VERSION_CACHE_TIMEOUT = 600
@@ -234,7 +229,8 @@ class GerritStatusPush(service.BuildbotService):
 
     def callWithVersion(self, func):
         command = self._gerritCmd("version")
-        callback = lambda gerrit_version: self.processVersion(gerrit_version, func)
+        callback = lambda gerrit_version: self.processVersion(
+            gerrit_version, func)
 
         self.spawnProcess(self.VersionPP(callback), command[0], command)
 
@@ -278,28 +274,28 @@ class GerritStatusPush(service.BuildbotService):
 
     @defer.inlineCallbacks
     def buildStarted(self, key, build):
-        if self.startCB is not None:
-            builder = yield self.master.data.get(("builders", build['builderid']))
-            build['builder'] = builder
-            if self.isBuildReported(build):
-                message = self.startCB(builder['name'], build, self.startArg)
-                self.sendCodeReviews(build, message)
-
-    def buildFinished(self, builderName, build, result):
-        """Do the SSH gerrit verify command to the server."""
-        result = _handleLegacyResult(self.reviewCB(builderName, build, result, self.master, self.reviewArg))
-        self.sendCodeReviews(build, result)
+        if self.startCB is None:
+            return
+        yield self.getBuildDetails(build)
+        if self.isBuildReported(build):
+            result = yield self.startCB(build['builder']['name'], build, self.startArg)
+            self.sendCodeReviews(build, result)
 
     @defer.inlineCallbacks
     def buildComplete(self, key, build):
         if self.reviewCB is None:
             return
+        yield self.getBuildDetails(build)
+        if self.isBuildReported(build):
+            result = yield self.reviewCB(build['builder']['name'], build, build['results'], self.master, self.reviewArg)
+            result = _handleLegacyResult(result)
+            self.sendCodeReviews(build, result)
+
+    @defer.inlineCallbacks
+    def getBuildDetails(self, build):
         br = yield self.master.data.get(("buildrequests", build['buildrequestid']))
         buildset = yield self.master.data.get(("buildsets", br['buildsetid']))
-        yield utils.getDetailsForBuilds(self.master, buildset, [build])
-        build['url'] = utils.getURLForBuild(self.master, build['builder']['builderid'], build['number'])
-        if self.isBuildReported(build):
-            self.buildFinished(build['builder']['name'], build, build['results'])
+        yield utils.getDetailsForBuilds(self.master, buildset, [build], wantProperties=True)
 
     def isBuildReported(self, build):
         return self.builders is None or build['builder']['name'] in self.builders
@@ -315,6 +311,7 @@ class GerritStatusPush(service.BuildbotService):
         buildset = res['buildset']
         self.sendBuildSetSummary(buildset, builds)
 
+    @defer.inlineCallbacks
     def sendBuildSetSummary(self, buildset, builds):
         builds = filter(self.isBuildReported, builds)
         if builds and self.summaryCB:
@@ -331,12 +328,18 @@ class GerritStatusPush(service.BuildbotService):
                         'result': result,
                         'resultText': resultText,
                         'text': build['state_string'],
-                        'url': utils.getURLForBuild(self.master, build['builder']['builderid'], build['number'])
+                        'url': utils.getURLForBuild(self.master, build['builder']['builderid'], build['number']),
+                        'build': build
                         }
-            buildInfoList = sorted([getBuildInfo(build) for build in builds], key=lambda bi: bi['name'])
+            buildInfoList = sorted(
+                [getBuildInfo(build) for build in builds], key=lambda bi: bi['name'])
 
-            result = _handleLegacyResult(self.summaryCB(buildInfoList, Results[buildset['results']],
-                                                        self.master, self.summaryArg))
+            result = yield self.summaryCB(buildInfoList,
+                                          Results[buildset['results']],
+                                          self.master,
+                                          self.summaryArg)
+
+            result = _handleLegacyResult(result)
             self.sendCodeReviews(builds[0], result)
 
     def sendCodeReviews(self, build, result):
@@ -366,13 +369,16 @@ class GerritStatusPush(service.BuildbotService):
             return
 
         # Gerrit + Git
-        if getProperty(build, "event.change.id") is not None:  # used only to verify Gerrit source
+        # used only to verify Gerrit source
+        if getProperty(build, "event.change.id") is not None:
             project = getProperty(build, "event.change.project")
             codebase = getProperty(build, "codebase")
-            revision = getProperty(build, "got_revision") or build.getProperty("revision")
+            revision = getProperty(
+                build, "got_revision") or getProperty(build, "revision")
 
             if isinstance(revision, dict):
-                # in case of the revision is a codebase revision, we just take the revisionfor current codebase
+                # in case of the revision is a codebase revision, we just take
+                # the revisionfor current codebase
                 if codebase is not None:
                     revision = revision[codebase]
                 else:
@@ -385,7 +391,8 @@ class GerritStatusPush(service.BuildbotService):
     def sendCodeReview(self, project, revision, result):
         gerrit_version = self.getCachedVersion()
         if gerrit_version is None:
-            self.callWithVersion(lambda: self.sendCodeReview(project, revision, result))
+            self.callWithVersion(
+                lambda: self.sendCodeReview(project, revision, result))
             return
 
         command = self._gerritCmd("review", "--project %s" % (project,))

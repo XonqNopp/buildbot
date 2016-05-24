@@ -5,12 +5,6 @@
 Reporters
 ---------
 
-.. warning::
-
-   Report targets are being migrated to Data API and not all status targets had been ported.
-   These have an explicit warning before their description and are marked as such in the section title (to make it easier to distinguish them in the table of contents).
-   As the old status targets are migrated to the new API, the warnings and markings will be removed.
-   (Remember this is a beta version.)
 
 .. contents::
     :depth: 2
@@ -48,13 +42,13 @@ A full list of reporters is available in the :bb:index:`reporter`.
 MailNotifier
 ~~~~~~~~~~~~
 
-.. py:class:: buildbot.reporter.mail.MailNotifier
+.. py:class:: buildbot.reporters.mail.MailNotifier
 
 The Buildbot can send email when builds finish.
 The most common use of this is to tell developers when their change has caused the build to fail.
 It is also quite common to send a message to a mailing list (usually named `builds` or similar) about every build.
 
-The :class:`MailNotifier` status target is used to accomplish this.
+The :class:`MailNotifier` reporter is used to accomplish this.
 You configure it by specifying who mail should be sent to, under what circumstances mail should be sent, and how to deliver the mail.
 It can be configured to only send out mail for certain builders, and only send messages when the build fails, or when the builder transitions from success to failure.
 It can also be configured to include various build logs in each message.
@@ -156,7 +150,7 @@ Another example of a function delivering a customized html email containing the 
         text = list()
         text.append(u'<h4>Build status: %s</h4>' % result.upper())
         text.append(u'<table cellspacing="10"><tr>')
-        text.append(u"<td>Buildslave for this Build:</td><td><b>%s</b></td></tr>" % build.getSlavename())
+        text.append(u"<td>Worker for this Build:</td><td><b>%s</b></td></tr>" % build.getWorkername())
         if master_status.getURLForThing(build):
             text.append(u'<tr><td>Complete logs for all build steps:</td><td><a href="%s">%s</a></td></tr>'
                         % (master_status.getURLForThing(build),
@@ -245,6 +239,8 @@ Another example of a function delivering a customized html email containing the 
                                 mode=('failing',),
                                 extraRecipients=['listaddr@example.org'],
                                 messageFormatter=html_message_formatter)
+
+.. _PyOpenSSL: http://pyopenssl.sourceforge.net/
 
 MailNotifier arguments
 ++++++++++++++++++++++
@@ -416,8 +412,8 @@ Build text
 Mapping of property names to (values, source)
     ``build['properties']``
 
-Slave name
-    ``build['properties']['slavename']``
+Worker name
+    ``build['properties']['workername']``
 
 Build reason (from a forced build)
     ``build['properties']['reason']``
@@ -431,10 +427,10 @@ List of responsible users
 .. index:: IRC
 
 IRC Bot
-~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~
 
 
-The :bb:reporter:`IRC` status target creates an IRC bot which will attach to certain channels and be available for status queries.
+The :bb:reporter:`IRC` reporter creates an IRC bot which will attach to certain channels and be available for status queries.
 It can also be asked to announce builds as they occur, or be told to shut up.
 
 The IRC Bot in buildbot nine, is mostly a rewrite, and not all functionality has been ported yet.
@@ -448,8 +444,8 @@ Please note that any user having access to your irc channel or can PM the bot wi
 
 ::
 
-    from buildbot.plugins import status
-    irc = status.IRC("irc.example.org", "botnickname",
+    from buildbot.plugins import reporters
+    irc = reporters.IRC("irc.example.org", "botnickname",
                      useColors=False,
                      channels=[{"channel": "#example1"},
                                {"channel": "#example2",
@@ -647,54 +643,6 @@ Two additional arguments can be set to control how fast the IRC bot tries to rec
 ``lostDelay`` defaults to a random number between 1 and 5, while ``failedDelay`` defaults to a random one between 45 and 60.
 Setting random defaults like this means multiple IRC bots are less likely to deny each other by flooding the server.
 
-.. bb:reporter:: StatusPush
-
-StatusPush (not migrated)
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. warning::
-
-   Not yet migrated to the new Data API based reporter API.
-
-
-.. @cindex StatusPush
-.. py:class:: buildbot.status.status_push.StatusPush
-
-::
-
-    def Process(self):
-        print str(self.queue.popChunk())
-        self.queueNextServerPush()
-
-    from buildbot.plugins import status
-    sp = status.StatusPush(serverPushCb=Process, bufferDelay=0.5, retryDelay=5)
-    c['services'].append(sp)
-
-:class:`StatusPush` batches events normally processed and sends it to the :func:`serverPushCb` callback every ``bufferDelay`` seconds.
-The callback should pop items from the queue and then queue the next callback.
-If no items were popped from ``self.queue``, ``retryDelay`` seconds will be waited instead.
-
-.. bb:reporter:: HttpStatusPush
-
-HttpStatusPush (not migrated)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. warning::
-
-   Not yet migrated to the new Data API based reporter API.
-
-
-.. @cindex HttpStatusPush
-.. @stindex buildbot.status.status_push.HttpStatusPush
-
-::
-
-    from buildbot.plugins import status
-    sp = status.HttpStatusPush(serverUrl="http://example.com/submit")
-    c['services'].append(sp)
-
-:class:`HttpStatusPush` builds on :class:`StatusPush` and sends HTTP requests to ``serverUrl``, with all the items json-encoded.
-It is useful to create a status front end outside of Buildbot for better scalability.
 
 .. bb:reporter:: GerritStatusPush
 
@@ -712,10 +660,10 @@ GerritStatusPush can send a separate review for each build that completes, or a 
    :param string username: Gerrit SSH server's username.
    :param identity_file: (optional) Gerrit SSH identity file.
    :param int port: (optional) Gerrit SSH server's port (default: 29418)
-   :param reviewCB: (optional) callback that is called each time a build is finished, and that is used to define the message and review approvals depending on the build result.
+   :param reviewCB: (optional) Called each time a build finishes. Build properties are available. Can be a deferred.
    :param reviewArg: (optional) argument passed to the review callback.
 
-                    If :py:func:`reviewCB` callback is specified, it determines the message and score to give when sending a review for each separate build.
+                    If :py:func:`reviewCB` callback is specified, it must return a message and optionally labels. If no message is specified, nothing will be sent to Gerrit.
                     It should return a dictionary:
 
                     .. code-block:: python
@@ -737,20 +685,30 @@ GerritStatusPush can send a separate review for each build that completes, or a 
 
                        from buildbot.plugins import util
 
-   :param startCB: (optional) callback that is called each time a build is started.
-                   Used to define the message sent to Gerrit.
+   :param startCB: (optional) Called each time a build is started. Build properties are available. Can be a deferred.
    :param startArg: (optional) argument passed to the start callback.
 
-                    If :py:func:`startCB` is specified, it should return a message.
-                    This message will be sent to the Gerrit server when each build is started, for example:
+                    If :py:func:`startCB` is specified, it must return a message and optionally labels. If no message is specified, nothing will be sent to Gerrit.
+                    It should return a dictionary:
+
+                    .. code-block:: python
+
+                        {'message': message,
+                         'labels': {label-name: label-score,
+                                    ...}
+                        }
+
+                    For example:
 
                     .. literalinclude:: /examples/git_gerrit.cfg
                        :pyobject: gerritStartCB
+                       :language: python
 
-   :param summaryCB: (optional) callback that is called each time a buildset finishes, and that is used to define a message and review approvals depending on the build result.
+   :param summaryCB: (optional) Called each time a buildset finishes. Each build in the buildset has properties available. Can be a deferred.
    :param summaryArg: (optional) argument passed to the summary callback.
 
-                      If :py:func:`summaryCB` callback is specified, determines the message and score to give when sending a single review summarizing all of the builds.
+                      If :py:func:`summaryCB` callback is specified, it must return a message and optionally labels. If no message is specified, nothing will be sent to Gerrit.
+                      The message and labels should be a summary of all the builds within the buildset.
                       It should return a dictionary:
 
                       .. code-block:: python
@@ -760,8 +718,11 @@ GerritStatusPush can send a separate review for each build that completes, or a 
                                       ...}
                           }
 
+                      For example:
+
                       .. literalinclude:: /examples/git_gerrit.cfg
                          :pyobject: gerritSummaryCB
+                         :language: python
 
    :param builders: (optional) list of builders to send results for.
                     This method allows to filter results for a specific set of builder.
@@ -779,87 +740,121 @@ GerritStatusPush can send a separate review for each build that completes, or a 
 
    :file:`master/docs/examples/git_gerrit.cfg` and :file:`master/docs/examples/repo_gerrit.cfg` in the Buildbot distribution provide a full example setup of Git+Gerrit or Repo+Gerrit of :bb:reporter:`GerritStatusPush`.
 
-.. bb:reporter:: GitHubStatus
 
-GitHubStatus (not migrated)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. bb:reporter:: HttpStatusPush
 
-.. warning::
+HttpStatusPush
+~~~~~~~~~~~~~~
 
-   Not yet migrated to the new Data API based reporter API.
-
-
-.. @cindex GitHubStatus
-.. py:class:: buildbot.status.github.GitHubStatus
+.. @cindex HttpStatusPush
+.. @stindex buildbot.reporters.HttpStatusPush
 
 ::
 
-    from buildbot.plugins import status, util
+    from buildbot.plugins import reporters
+    sp = reporters.HttpStatusPush(serverUrl="http://example.com/submit")
+    c['services'].append(sp)
 
-    repoOwner = Interpolate("%(prop:github_repo_owner)s")
-    repoName = Interpolate("%(prop:github_repo_name)s")
-    sha = Interpolate("%(src::revision)s")
+:class:`HttpStatusPush` builds on :class:`StatusPush` and sends HTTP requests to ``serverUrl``, with all the items json-encoded.
+It is useful to create a status front end outside of Buildbot for better scalability.
+
+It requires `txrequests`_ package to allow interaction with http server.
+
+.. note::
+
+   The json data object sent is completly different from the one that was generated by 0.8.x buildbot.
+   It is indeed generated using data api.
+
+.. py:class:: HttpStatusPush(serverUrl, user, password, builders = None, wantProperties=False, wantSteps=False, wantPreviousBuild=False, wantLogs=False)
+
+    :param string serverUrl: the url where to do the http post
+    :param string user: the BasicAuth user to post as
+    :param string password: the BasicAuth user's password
+    :param list builders: only send update for specified builders
+    :param boolean wantProperties: include 'properties' in the build dictionary
+    :param boolean wantSteps: include 'steps' in the build dictionary
+    :param boolean wantLogs: include 'logs' in the steps dictionaries.
+        This needs wantSteps=True.
+        This dumps the *full* content of logs.
+    :param boolean wantPreviousBuild: include 'prev_build' in the build dictionary
+
+Json object spec
+++++++++++++++++
+
+The default json object sent is a build object agremented wih some more data as follow.
+
+.. code-block:: json
+
+    {
+        "url": "http://yourbot/path/to/build",
+        "<build data api values>": "[...]",
+        "buildset": "<buildset data api values>",
+        "builder": "<builder data api values>",
+        "buildrequest": "<buildrequest data api values>"
+    }
+
+
+If you want another format, don't hesitate to subclass, and modify the :py:meth:`send` method.
+
+.. _txrequests: https://pypi.python.org/pypi/txrequests
+
+.. bb:reporter:: GitHubStatus
+
+GitHubStatus
+~~~~~~~~~~~~
+
+
+.. @cindex GitHubStatus
+.. py:class:: buildbot.reporters.github.GitHubStatus
+
+::
+
+    from buildbot.plugins import reporters, util
+
     context = Interpolate("buildbot/%(prop:buildername)s")
     gs = status.GitHubStatus(token='githubAPIToken',
-                             repoOwner=repoOwner,
-                             repoName=repoName,
-                             sha=sha,
                              context=context,
                              startDescription='Build started.',
                              endDescription='Build done.')
+    factory = util.BuildFactory()
     buildbot_bbtools = util.BuilderConfig(
         name='builder-name',
-        slavenames=['slave1'],
-        factory=BuilderFactory(),
-        properties={
-            "github_repo_owner": "buildbot",
-            "github_repo_name": "bbtools",
-            })
+        workernames=['worker1'],
+        factory=factory)
     c['builders'].append(buildbot_bbtools)
     c['services'].append(gs)
 
 :class:`GitHubStatus` publishes a build status using `GitHub Status API <http://developer.github.com/v3/repos/statuses>`_.
 
-It requires `txgithub <https://pypi.python.org/pypi/txgithub>` package to allow interaction with GitHub API.
+It requires `txrequests`_ package to allow interaction with GitHub REST API.
 
-It is configured with at least a GitHub API token, repoOwner and repoName arguments.
+It is configured with at least a GitHub API token.
 
 You can create a token from you own `GitHub - Profile - Applications - Register new application <https://github.com/settings/applications>`_ or use an external tool to generate one.
 
-`repoOwner`, `repoName` are used to inform the plugin where to send status for build.
-This allow using a single :class:`GitHubStatus` for multiple projects.
-`repoOwner`, `repoName` can be passes as a static `string` (for single project) or :class:`Interpolate` for dynamic substitution in multiple project.
+.. py:class:: GithubStatusPush(token, startDescription=None, endDescription=None, context=None, baseURL=None, verbose=False, builders=None)
 
-`sha` argument is use to define the commit SHA for which to send the status.
-By default `sha` is defined as: `%(src::revision)s`.
+    :param string token: token used for authentication.
+    :param rendereable string startDescription: Custom start message (default: 'Build started.')
+    :param rendereable string endDescription: Custom end message (default: 'Build done.')
+    :param rendereable string context: Passed to GitHub to differentiate between statuses.
+        A static string can be passed or :class:`Interpolate` for dynamic substitution.
+        The default context is `buildbot/%(prop:buildername)s`.
+    :param string baseURL: specify the github api endpoint if you work with GitHub Enterprise
+    :param boolean verbose: if True, logs a message for each successful status push
+    :param list builders: only send update for specified builders
 
-In case any of `repoOwner`, `repoName` or `sha` returns `None`, `False` or empty string, the plugin will skip sending the status.
-
-The `context` argument is passed to GitHub to differentiate between statuses. A static string can be passed or :class:`Interpolate` for dynamic substitution.
-The default context is `buildbot/%(prop:buildername)s`.
-
-You can define custom start and end build messages using the `startDescription` and `endDescription` optional interpolation arguments.
-
-Starting with Buildbot version 0.8.11, :class:`GitHubStatus` supports additional parameter -- ``baseURL`` -- that allows to specify a different API base endpoint.
-This is required if you work with GitHub Enterprise installation.
-This feature requires ``txgithub`` of version 0.2.0 or better.
-
-StashStatusPush (not migrated)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. warning::
-
-   Not yet migrated to the new Data API based reporter API.
-
+StashStatusPush
+~~~~~~~~~~~~~~~
 
 .. @cindex StashStatusPush
-.. py:class:: buildbot.status.status_stash.StashStatusPush
+.. py:class:: buildbot.reporters.stash.StashStatusPush
 
 ::
 
-    from buildbot.plugins import status
+    from buildbot.plugins import reporters
 
-    ss = status.StashStatusPush('https://stash.example.com:8080/',
+    ss = reporters.StashStatusPush('https://stash.example.com:8080/',
                                 'stash_username',
                                 'secret_password')
     c['services'].append(ss)
@@ -870,18 +865,172 @@ It tracks the last build for each builderName for each commit built.
 
 Specifically, it follows the `Updating build status for commits <https://developer.atlassian.com/stash/docs/latest/how-tos/updating-build-status-for-commits.html>`_ document.
 
-It uses the standard Python Twisted Agent to make REST requests to the stash server.
+It requires `txgithub <https://pypi.python.org/pypi/txrequests>`_ package to allow interaction with GitHub API.
+
+It requires `txrequests`_ package to allow interaction with Stash REST API.
+
 It uses HTTP Basic AUTH.
 As a result, we recommend you use https in your base_url rather than http.
-If you use https, it requires `pyOpenSSL`.
 
-Configuration requires exactly 3 parameters:
+.. py:class:: StashStatusPush(base_url, user, password, builders = None)
 
-``base_url``
-    the base url of the stash host, up to and optionally including the first `/` of the path.
-``user``
-    the stash user to post as
-``password``
-    the stash user's password
+    :param string base_url: the base url of the stash host, up to and optionally including the first `/` of the path.
+    :param string user: the stash user to post as
+    :param string password: the stash user's password
+    :param list builders: only send update for specified builders
 
-.. _PyOpenSSL: http://pyopenssl.sourceforge.net/
+
+.. bb:reporter:: GitLabStatusPush
+
+GitLabStatusPush
+~~~~~~~~~~~~~~~~
+
+.. @cindex GitLabStatusPush
+.. py:class:: buildbot.reporters.gitlab.GitLabStatusPush
+
+::
+
+    from buildbot.plugins import reporters
+
+    gl = reporters.GitLabStatusPush('private-token', context='continuous-integration/buildbot', baseUrl='https://git.yourcompany.com')
+    c['services'].append(gl)
+
+:class:`GitLabStatusPush` publishes build status using `GitLab Commit Status API <http://doc.gitlab.com/ce/api/commits.html#commit-status>`_.
+The build status is published to a specific commit SHA in GitLab.
+
+It requires `txrequests`_ package to allow interaction with GitLab Commit Status API.
+
+It uses private token auth, and the token owner is required to have at least reporter access to each repository. As a result, we recommend you use https in your base_url rather than http.
+
+
+.. py:class:: GitLabStatusPush(token, startDescription=None, endDescription=None, context=None, baseURL=None, verbose=False)
+
+    :param string token: Private token of user permitted to update status for commits 
+    :param string startDescription: Description used when build starts 
+    :param string endDescription: Description used when build ends 
+    :param string context: Name of your build system, eg. continuous-integration/buildbot 
+    :param string baseURL: the base url of the GitLab host, up to and optionally including the first `/` of the path. Do not include /api/
+    :param string verbose: Be more verbose
+
+
+.. bb:reporter:: HipchatStatusPush
+
+HipchatStatusPush
+~~~~~~~~~~~~~~~~~
+
+.. @cindex HipchatStatusPush
+.. py:class:: buildbot.reporters.hipchat.HipchatStatusPush
+
+::
+
+    from buildbot.plugins import reporters
+
+    hs = reporters.HipchatStatusPush('private-token', endpoint='https://chat.yourcompany.com')
+    c['services'].append(hs)
+
+:class:`HipchatStatusPush` publishes a custom message using `Hipchat API v2 <https://www.hipchat.com/docs/apiv2>`_.
+The message is published to a user and/or room in Hipchat,
+
+It requires `txrequests`_ package to allow interaction with Hipchat API.
+
+It uses API token auth, and the token owner is required to have at least message/notification access to each destination.
+
+
+.. py:class:: HipchatStatusPush(auth_token, endpoint="https://api.hipchat.com",
+                                builder_room_map=None, builder_user_map=None,
+                                wantProperties=False, wantSteps=False, wantPreviousBuild=False, wantLogs=False)
+
+    :param string auth_token: Private API token with access to the "Send Message" and "Send Notification" scopes.
+    :param string endpoint: (optional) URL of your Hipchat server. Defaults to https://api.hipchat.com
+    :param dictionary builder_room_map: (optional) If specified, will forward events about a builder (based on name) to the corresponding room ID.
+    :param dictionary builder_user_map: (optional) If specified, will forward events about a builder (based on name) to the corresponding user ID.
+    :param boolean wantProperties: (optional) include 'properties' in the build dictionary
+    :param boolean wantSteps: (optional) include 'steps' in the build dictionary
+    :param boolean wantLogs: (optional) include 'logs' in the steps dictionaries.
+        This needs wantSteps=True.
+        This dumps the *full* content of logs.
+    :param boolean wantPreviousBuild: (optional) include 'prev_build' in the build dictionary
+
+
+.. note::
+
+   No message will be sent if the message is empty or there is no destination found.
+
+.. note::
+
+   If a builder name appears in both the room and user map, the same message will be sent to both destinations.
+
+
+Json object spec
+++++++++++++++++
+
+The default json object contains the minimal required parameters to send a message to Hipchat.
+
+.. code-block:: json
+
+    {
+        "message": "Buildbot started/finished build MyBuilderName (with result success) here: http://mybuildbot.com/#/builders/23",
+        "id_or_email": "12"
+    }
+
+
+If you require different parameters, the Hipchat reporter utilizes the template design pattern and will call :py:func:`getRecipientList` :py:func:`getMessage` :py:func:`getExtraParams`
+before sending a message. This allows you to easily override the default implementation for those methods. All of those methods can be deferred.
+
+Method signatures:
+
+.. py:method:: getRecipientList(self, build, event_name)
+
+     :param build: A :class:`Build` object
+     :param string event_name: the name of the event trigger for this invocation. either 'new' or 'finished'
+     :returns: Deferred
+
+     The deferred should return a dictionary containing the key(s) 'id_or_email' for a private user message and/or
+     'room_id_or_name' for room notifications.
+
+.. py:method:: getMessage(self, build, event_name)
+
+     :param build: A :class:`Build` object
+     :param string event_name: the name of the event trigger for this invocation. either 'new' or 'finished'
+     :returns: Deferred
+
+     The deferred should return a string to send to Hipchat.
+
+.. py:method:: getExtraParams(self, build, event_name)
+
+     :param build: A :class:`Build` object
+     :param string event_name: the name of the event trigger for this invocation. either 'new' or 'finished'
+     :returns: Deferred
+
+     The deferred should return a dictionary containing any extra parameters you wish to include in your JSON POST
+     request that the Hipchat API can consume.
+
+Here's a complete example:
+
+.. code-block:: python
+
+    class MyHipchatStatusPush(HipChatStatusPush):
+        name = "MyHipchatStatusPush"
+
+        # send all messages to the same room
+        def getRecipientList(self, build, event_name):
+            return {
+                'room_id_or_name': 'AllBuildNotifications'
+            }
+
+        # only send notifications on finished events
+        def getMessage(self, build, event_name):
+            event_messages = {
+                'finished': 'Build finished.'
+            }
+            return event_messages.get(event_name, '')
+
+        # color notifications based on the build result
+        # and alert room on build failure
+        def getExtraParams(self, build, event_name):
+            result = {}
+            if event_name == 'finished':
+                result['color'] = 'green' if build['results'] == 0 else 'red'
+                result['notify'] = (build['results'] != 0)
+            return result
+

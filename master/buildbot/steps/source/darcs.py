@@ -12,15 +12,15 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
-# Source step code for darcs
-
+"""
+Source step code for darcs
+"""
 from twisted.internet import defer
 from twisted.internet import reactor
 from twisted.python import log
 
 from buildbot.config import ConfigErrors
-from buildbot.interfaces import BuildSlaveTooOldError
+from buildbot.interfaces import WorkerTooOldError
 from buildbot.process import buildstep
 from buildbot.process import remotecommand
 from buildbot.process import remotetransfer
@@ -73,7 +73,7 @@ class Darcs(Source):
         @d.addCallback
         def checkInstall(darcsInstalled):
             if not darcsInstalled:
-                raise BuildSlaveTooOldError("Darcs is not installed on slave")
+                raise WorkerTooOldError("Darcs is not installed on worker")
             return 0
         d.addCallback(lambda _: self.sourcedirIsPatched())
 
@@ -157,10 +157,12 @@ class Darcs(Source):
         return d
 
     def _clone(self, abandonOnFailure=False):
-        command = ['darcs', 'get', '--verbose', '--lazy', '--repo-name', self.workdir]
+        command = ['darcs', 'get', '--verbose',
+                   '--lazy', '--repo-name', self.workdir]
         d = defer.succeed(0)
         if self.revision:
-            d.addCallback(lambda _: self._downloadFile(self.revision, '.darcs-context'))
+            d.addCallback(
+                lambda _: self._downloadFile(self.revision, '.darcs-context'))
             command.append('--context')
             command.append('.darcs-context')
 

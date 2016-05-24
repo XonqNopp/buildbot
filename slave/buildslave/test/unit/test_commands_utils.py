@@ -12,6 +12,7 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+
 from __future__ import print_function
 
 import os
@@ -19,7 +20,6 @@ import shutil
 import sys
 
 import twisted.python.procutils
-
 from twisted.python import runtime
 from twisted.trial import unittest
 
@@ -76,9 +76,11 @@ class GetCommand(unittest.TestCase):
         })
         # this one will work out differently depending on platform..
         if runtime.platformType == 'win32':
-            self.assertEqual(utils.getCommand('xeyes'), r'c:\program files\xeyes.exe')
+            self.assertEqual(
+                utils.getCommand('xeyes'), r'c:\program files\xeyes.exe')
         else:
-            self.assertEqual(utils.getCommand('xeyes'), r'c:\program files\xeyes.com')
+            self.assertEqual(
+                utils.getCommand('xeyes'), r'c:\program files\xeyes.com')
 
 
 class RmdirRecursive(unittest.TestCase):
@@ -109,7 +111,10 @@ class RmdirRecursive(unittest.TestCase):
             if os.path.exists(self.target):
                 shutil.rmtree(self.target)
         except Exception:
-            print("\n(target directory was not removed by test, and cleanup failed too)\n")
+            print("\n"
+                  "(target directory was not removed by test, and cleanup "
+                  "failed too)"
+                  "\n")
             raise
 
     def test_rmdirRecursive_easy(self):

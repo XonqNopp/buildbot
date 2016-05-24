@@ -12,7 +12,6 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import os
 import re
 import sys
@@ -113,7 +112,8 @@ def getProcessOutputAndValueWithInput(executable, args, input):
 
 
 class TestBuildbotCvsMail(unittest.TestCase):
-    buildbot_cvs_mail_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../contrib/buildbot_cvs_mail.py'))
+    buildbot_cvs_mail_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), '../../../contrib/buildbot_cvs_mail.py'))
     if not os.path.exists(buildbot_cvs_mail_path):
         skip = ("'%s' does not exist (normal unless run from git)"
                 % buildbot_cvs_mail_path)
@@ -159,7 +159,8 @@ class TestBuildbotCvsMail(unittest.TestCase):
         return d
 
     def test_buildbot_cvs_mail_no_args_exits_with_error(self):
-        d = utils.getProcessOutputAndValue(sys.executable, [self.buildbot_cvs_mail_path])
+        d = utils.getProcessOutputAndValue(
+            sys.executable, [self.buildbot_cvs_mail_path])
 
         def check(xxx_todo_changeme):
             (stdout, stderr, code) = xxx_todo_changeme

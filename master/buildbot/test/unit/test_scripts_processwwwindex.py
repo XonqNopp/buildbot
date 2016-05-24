@@ -12,8 +12,6 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
-
 import tempfile
 
 from twisted.trial import unittest
@@ -26,7 +24,8 @@ class TestUsersClient(unittest.TestCase):
 
     def setUp(self):
         # un-do the effects of @in_reactor
-        self.patch(processwwwindex, 'processwwwindex', processwwwindex.processwwwindex._orig)
+        self.patch(processwwwindex, 'processwwwindex',
+                   processwwwindex.processwwwindex._orig)
 
     def test_no_input_file(self):
         d = processwwwindex.processwwwindex({})
@@ -45,15 +44,19 @@ class TestUsersClient(unittest.TestCase):
         return d
 
     def test_output_config(self):
-        tmpf = tempfile.NamedTemporaryFile(suffix=".html")
-        with open(tmpf.name, 'w') as f:
+        # Get temporary file ending with ".html" that has visible to other
+        # operations name.
+        with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmpf:
+            tmpf_name = tmpf.name
+
+        with open(tmpf_name, 'w') as f:
             f.write('{{ configjson|safe }}')
 
-        d = processwwwindex.processwwwindex({'index-file': tmpf.name})
+        d = processwwwindex.processwwwindex({'index-file': tmpf_name})
 
         def check(ret):
             self.assertEqual(ret, 0)
-            with open(tmpf.name) as f:
+            with open(tmpf_name) as f:
                 config = json.loads(f.read())
                 self.assertTrue(isinstance(config, dict))
 

@@ -13,34 +13,31 @@
 #
 # Copyright Buildbot Team Members
 from __future__ import print_function
-from future.utils import iteritems
-from future.utils import itervalues
-
 
 import cPickle
 import cStringIO
 import new
 import os
 import sys
-
-from functools import reduce
-
 from bz2 import BZ2File
+from collections import defaultdict
 from cStringIO import StringIO
+from functools import reduce
 from gzip import GzipFile
 
-from buildbot import interfaces
-from buildbot import util
-from buildbot.util import netstrings
-from collections import defaultdict
+from future.utils import iteritems
+from future.utils import itervalues
 from twisted.internet import defer
 from twisted.internet import reactor
 from twisted.persisted import styles
 from twisted.python import log
 from twisted.python import reflect
-from twisted.python import runtime
 from twisted.spread import pb
 from zope.interface import implements
+
+from buildbot import interfaces
+from buildbot import util
+from buildbot.util import netstrings
 
 # This module contains classes that are referenced in pickles, and thus needed
 # during upgrade operations, but are no longer used in a running Buildbot
@@ -64,7 +61,8 @@ class SourceStamp(styles.Versioned):  # pragma: no cover
     sourcestampsetid = None
     ssid = None
 
-    compare_attrs = ('branch', 'revision', 'patch', 'patch_info', 'changes', 'project', 'repository', 'codebase')
+    compare_attrs = ('branch', 'revision', 'patch', 'patch_info',
+                     'changes', 'project', 'repository', 'codebase')
 
     implements(interfaces.ISourceStamp)
 
@@ -110,7 +108,8 @@ class SourceStamp(styles.Versioned):  # pragma: no cover
         self.wasUpgraded = True
 
     def upgradeToVersion2(self):
-        # version 1 did not have project or repository; just set them to a default ''
+        # version 1 did not have project or repository; just set them to a
+        # default ''
         self.project = ''
         self.repository = ''
         self.wasUpgraded = True
@@ -133,19 +132,7 @@ class ChangeMaster:  # pragma: no cover
         self.nextNumber = 1
 
     def saveYourself(self):
-        filename = os.path.join(self.basedir, "changes.pck")
-        tmpfilename = filename + ".tmp"
-        try:
-            with open(tmpfilename, "wb") as f:
-                dump(self, f)
-            if runtime.platformType == 'win32':
-                # windows cannot rename a file on top of an existing one
-                if os.path.exists(filename):
-                    os.unlink(filename)
-            os.rename(tmpfilename, filename)
-        except Exception:
-            log.msg("unable to save changes")
-            log.err()
+        return
 
     # This method is used by contrib/fix_changes_pickle_encoding.py to recode all
     # bytestrings in an old changes.pck into unicode strings
@@ -417,8 +404,10 @@ class BuildStepStatus(styles.Versioned):
 # fully qualified class name.  This module appeared in two different modules
 # historically
 BuildStepStatus.__module__ = 'buildbot.status.builder'
-substituteClasses['buildbot.status.buildstep', 'BuildStepStatus'] = BuildStepStatus
-substituteClasses['buildbot.status.builder', 'BuildStepStatus'] = BuildStepStatus
+substituteClasses[
+    'buildbot.status.buildstep', 'BuildStepStatus'] = BuildStepStatus
+substituteClasses[
+    'buildbot.status.builder', 'BuildStepStatus'] = BuildStepStatus
 
 STDOUT = 0
 STDERR = 1

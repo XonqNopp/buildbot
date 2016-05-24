@@ -12,34 +12,33 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-from future.utils import itervalues
-
 import itertools
 import os
 import re
 
-from buildbot import interfaces
-from buildbot import util
-from buildbot.status.build import BuildStatus
-from buildbot.status.buildrequest import BuildRequestStatus
-from buildbot.status.event import Event
-from buildbot.util import pickle
-from buildbot.util.lru import LRUCache
+from future.utils import itervalues
 from twisted.persisted import styles
 from twisted.python import log
-from twisted.python import runtime
 from zope.interface import implements
 
+from buildbot import interfaces
+from buildbot import util
 # user modules expect these symbols to be present here
 from buildbot.process.results import CANCELLED
 from buildbot.process.results import EXCEPTION
 from buildbot.process.results import FAILURE
 from buildbot.process.results import RETRY
-from buildbot.process.results import Results
 from buildbot.process.results import SKIPPED
 from buildbot.process.results import SUCCESS
 from buildbot.process.results import WARNINGS
+from buildbot.process.results import Results
 from buildbot.process.results import worst_status
+from buildbot.status.build import BuildStatus
+from buildbot.status.buildrequest import BuildRequestStatus
+from buildbot.status.event import Event
+from buildbot.util import pickle
+from buildbot.util.lru import LRUCache
+
 _hush_pyflakes = [SUCCESS, WARNINGS, FAILURE, SKIPPED,
                   EXCEPTION, RETRY, CANCELLED, Results, worst_status]
 
@@ -79,7 +78,7 @@ class BuilderStatus(styles.Versioned):
         self.description = description
         self.master = master
 
-        self.slavenames = []
+        self.workernames = []
         self.events = []
         # these three hold Events, and are used to retrieve the current
         # state of the boxes.
@@ -118,14 +117,14 @@ class BuilderStatus(styles.Versioned):
         self.buildCache = LRUCache(self.cacheMiss)
         self.currentBuilds = []
         self.watchers = []
-        self.slavenames = []
+        self.workernames = []
         # self.basedir must be filled in by our parent
         # self.status must be filled in by our parent
         # self.master must be filled in by our parent
 
     def upgradeToVersion1(self):
         if hasattr(self, 'slavename'):
-            self.slavenames = [self.slavename]
+            self.workernames = [self.slavename]
             del self.slavename
         if hasattr(self, 'nextBuildNumber'):
             del self.nextBuildNumber  # determineNextBuildNumber chooses this
@@ -137,42 +136,10 @@ class BuilderStatus(styles.Versioned):
             del self.category
         self.wasUpgraded = True
 
-    def determineNextBuildNumber(self):
-        """Scan our directory of saved BuildStatus instances to determine
-        what our self.nextBuildNumber should be. Set it one larger than the
-        highest-numbered build we discover. This is called by the top-level
-        Status object shortly after we are created or loaded from disk.
-        """
-        existing_builds = [int(f)
-                           for f in os.listdir(self.basedir)
-                           if re.match(r"^\d+$", f)]
-        if existing_builds:
-            self.nextBuildNumber = max(existing_builds) + 1
-        else:
-            self.nextBuildNumber = 0
-
     def saveYourself(self):
-        for b in self.currentBuilds:
-            if not b.isFinished:
-                # interrupted build, need to save it anyway.
-                # BuildStatus.saveYourself will mark it as interrupted.
-                b.saveYourself()
-        filename = os.path.join(self.basedir, "builder")
-        tmpfilename = filename + ".tmp"
-        try:
-            with open(tmpfilename, "wb") as f:
-                pickle.dump(self, f, -1)
-            if runtime.platformType == 'win32':
-                # windows cannot rename a file on top of an existing one
-                if os.path.exists(filename):
-                    os.unlink(filename)
-            os.rename(tmpfilename, filename)
-        except Exception:
-            log.msg("unable to save builder %s" % self.name)
-            log.err()
+        return
 
     # build cache management
-
     def setCacheSize(self, size):
         self.buildCache.set_max_size(size)
 
@@ -251,7 +218,8 @@ class BuilderStatus(styles.Versioned):
         if earliest_build == 0:
             return
 
-        # skim the directory and delete anything that shouldn't be there anymore
+        # skim the directory and delete anything that shouldn't be there
+        # anymore
         build_re = re.compile(r"^([0-9]+)$")
         build_log_re = re.compile(r"^([0-9]+)-.*$")
         # if the directory doesn't exist, bail out here
@@ -299,11 +267,12 @@ class BuilderStatus(styles.Versioned):
     def getState(self):
         return (self.currentBigState, self.currentBuilds)
 
-    def getSlaves(self):
-        return [self.status.getSlave(name) for name in self.slavenames]
+    def getWorkers(self):
+        return [self.status.getWorker(name) for name in self.workernames]
 
     def getPendingBuildRequestStatuses(self):
-        # just assert 0 here. According to dustin the whole class will go away soon.
+        # just assert 0 here. According to dustin the whole class will go away
+        # soon.
         assert 0
         db = self.status.master.db
         d = db.buildrequests.getBuildRequests(claimed=False,
@@ -485,7 +454,7 @@ class BuilderStatus(styles.Versioned):
     def subscribe(self, receiver):
         # will get builderChangedState, buildStarted, buildFinished,
         # requestSubmitted, requestCancelled. Note that a request which is
-        # resubmitted (due to a slave disconnect) will cause requestSubmitted
+        # resubmitted (due to a worker disconnect) will cause requestSubmitted
         # to be invoked multiple times.
         self.watchers.append(receiver)
         self.publishState(receiver)
@@ -498,8 +467,8 @@ class BuilderStatus(styles.Versioned):
 
     # Builder interface (methods called by the Builder which feeds us)
 
-    def setSlavenames(self, names):
-        self.slavenames = names
+    def setWorkernames(self, names):
+        self.workernames = names
 
     def addEvent(self, text=None):
         # this adds a duration event. When it is done, the user should call
@@ -547,17 +516,7 @@ class BuilderStatus(styles.Versioned):
                 log.err()
 
     def newBuild(self):
-        """The Builder has decided to start a build, but the Build object is
-        not yet ready to report status (it has not finished creating the
-        Steps). Create a BuildStatus object that it can use."""
-        number = self.nextBuildNumber
-        self.nextBuildNumber += 1
-        # TODO: self.saveYourself(), to make sure we don't forget about the
-        # build number we've just allocated. This is not quite as important
-        # as it was before we switch to determineNextBuildNumber, but I think
-        # it may still be useful to have the new build save itself.
-        s = BuildStatus(self, self.master, number)
-        s.waitUntilFinished().addCallback(self._buildFinished)
+        s = BuildStatus(self, self.master, 0)
         return s
 
     # buildStarted is called by our child BuildStatus instances
@@ -584,7 +543,8 @@ class BuilderStatus(styles.Versioned):
                     d = s.waitUntilFinished()
                     d.addCallback(lambda s: s.unsubscribe(receiver))
             except Exception:
-                log.msg("Exception caught notifying %r of buildStarted event" % w)
+                log.msg(
+                    "Exception caught notifying %r of buildStarted event" % w)
                 log.err()
 
     def _buildFinished(self, s):
@@ -598,7 +558,8 @@ class BuilderStatus(styles.Versioned):
             try:
                 w.buildFinished(name, s, results)
             except Exception:
-                log.msg("Exception caught notifying %r of buildFinished event" % w)
+                log.msg(
+                    "Exception caught notifying %r of buildFinished event" % w)
                 log.err()
 
         self.prune()  # conserve disk
@@ -614,7 +575,7 @@ class BuilderStatus(styles.Versioned):
             # TODO(maruel): Fix me. We don't want to leak the full path.
             'basedir': os.path.basename(self.basedir),
             'tags': self.getTags(),
-            'slaves': self.slavenames,
+            'workers': self.workernames,
             'schedulers': [s.name for s in self.status.master.allSchedulers()
                            if self.name in s.builderNames],
             # TODO(maruel): Add cache settings? Do we care?

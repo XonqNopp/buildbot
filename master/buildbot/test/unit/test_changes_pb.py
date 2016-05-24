@@ -12,16 +12,15 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import mock
+from twisted.internet import defer
+from twisted.trial import unittest
 
 from buildbot import config
 from buildbot.changes import pb
 from buildbot.test.fake import fakemaster
 from buildbot.test.util import changesource
 from buildbot.test.util import pbmanager
-from twisted.internet import defer
-from twisted.trial import unittest
 
 
 class TestPBChangeSource(
@@ -46,11 +45,11 @@ class TestPBChangeSource(
 
         return d
 
-    def test_registration_no_slaveport(self):
+    def test_registration_no_workerport(self):
         return self._test_registration(None, exp_ConfigErrors=True,
                                        user='alice', passwd='sekrit')
 
-    def test_registration_global_slaveport(self):
+    def test_registration_global_workerport(self):
         return self._test_registration(self.EXP_DEFAULT_REGISTRATION,
                                        **self.DEFAULT_CONFIG)
 
@@ -60,7 +59,7 @@ class TestPBChangeSource(
 
     def test_registration_no_userpass(self):
         return self._test_registration(('9939', 'change', 'changepw'),
-                                       slavePort='9939')
+                                       workerPort='9939')
 
     def test_registration_no_userpass_no_global(self):
         return self._test_registration(None, exp_ConfigErrors=True)
@@ -83,18 +82,20 @@ class TestPBChangeSource(
         self.setChangeSourceToMaster(None)
 
         # not quite enough time to cause it to activate
-        self.changesource.clock.advance(self.changesource.POLL_INTERVAL_SEC * 4 / 5)
+        self.changesource.clock.advance(
+            self.changesource.POLL_INTERVAL_SEC * 4 / 5)
         self.assertNotRegistered()
 
         # there we go!
-        self.changesource.clock.advance(self.changesource.POLL_INTERVAL_SEC * 2 / 5)
+        self.changesource.clock.advance(
+            self.changesource.POLL_INTERVAL_SEC * 2 / 5)
         self.assertRegistered(*self.EXP_DEFAULT_REGISTRATION)
 
     @defer.inlineCallbacks
     def _test_registration(self, exp_registration, exp_ConfigErrors=False,
-                           slavePort=None, **constr_kwargs):
+                           workerPort=None, **constr_kwargs):
         cfg = mock.Mock()
-        cfg.protocols = {'pb': {'port': slavePort}}
+        cfg.protocols = {'pb': {'port': workerPort}}
         self.attachChangeSource(pb.PBChangeSource(**constr_kwargs))
 
         self.startChangeSource()
@@ -119,7 +120,8 @@ class TestPBChangeSource(
         self.assertEqual(self.changesource.registration, None)
 
     def test_perspective(self):
-        self.attachChangeSource(pb.PBChangeSource('alice', 'sekrit', port='8888'))
+        self.attachChangeSource(
+            pb.PBChangeSource('alice', 'sekrit', port='8888'))
         persp = self.changesource.getPerspective(mock.Mock(), 'alice')
         self.assertIsInstance(persp, pb.ChangePerspective)
 
@@ -387,7 +389,8 @@ class TestChangePerspective(unittest.TestCase):
     def test_addChange_unicode_as_bytestring(self):
         cp = pb.ChangePerspective(self.master, None)
         d = cp.perspective_addChange(dict(author=u"\N{SNOWMAN}".encode('utf8'),
-                                          comments=u"\N{SNOWMAN}".encode('utf8'),
+                                          comments=u"\N{SNOWMAN}".encode(
+                                              'utf8'),
                                           files=[u'\N{VERY MUCH GREATER-THAN}'.encode('utf8')]))
 
         def check(_):

@@ -12,13 +12,13 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 from twisted.internet import defer
 
 from buildbot.test.util.decorators import flaky
 from buildbot.test.util.integration import RunMasterBase
 
-# This integration test creates a master and slave environment,
+
+# This integration test creates a master and worker environment,
 # with one builder and a custom step
 # The custom step is using a CustomService, in order to calculate its result
 # we make sure that we can reconfigure the master while build is running
@@ -29,6 +29,7 @@ class CustomServiceMaster(RunMasterBase):
     @flaky(bugNumber=3340)
     @defer.inlineCallbacks
     def test_customService(self):
+        yield self.setupConfig(masterConfig())
 
         build = yield self.doForceBuild(wantSteps=True)
 
@@ -58,7 +59,8 @@ class CustomServiceMaster(RunMasterBase):
         yield self.master.reconfig()
 
         # second service removed
-        self.assertNotIn('myService2', self.master.service_manager.namedServices)
+        self.assertNotIn(
+            'myService2', self.master.service_manager.namedServices)
         self.assertFalse(myService2.running)
         self.assertEqual(myService2.num_reconfig, 3)
         self.assertEqual(myService.num_reconfig, 4)
@@ -101,10 +103,11 @@ def masterConfig():
     f.addStep(MyShellCommand(command='echo hei'))
     c['builders'] = [
         BuilderConfig(name="testy",
-                      slavenames=["local1"],
+                      workernames=["local1"],
                       factory=f)]
 
     c['services'] = [MyService(num_reconfig=num_reconfig)]
     if num_reconfig == 3:
-        c['services'].append(MyService(name="myService2", num_reconfig=num_reconfig))
+        c['services'].append(
+            MyService(name="myService2", num_reconfig=num_reconfig))
     return c

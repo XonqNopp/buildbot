@@ -13,12 +13,13 @@
 #
 # Copyright Buildbot Team Members
 
-import UserList
 import copy
 import re
+import UserList
+
+from twisted.internet import defer
 
 from buildbot.data import exceptions
-from twisted.internet import defer
 
 
 class ResourceType(object):
@@ -120,7 +121,8 @@ class BuildNestingMixin(object):
                 return
 
             dbdict = yield self.master.db.steps.getStep(buildid=buildid,
-                                                        number=kwargs.get('step_number'),
+                                                        number=kwargs.get(
+                                                            'step_number'),
                                                         name=kwargs.get('step_name'))
             if not dbdict:
                 return

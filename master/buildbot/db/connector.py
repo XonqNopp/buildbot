@@ -15,12 +15,15 @@
 
 import textwrap
 
+from twisted.application import internet
+from twisted.internet import defer
+from twisted.python import log
+
 from buildbot import util
 from buildbot.db import builders
 from buildbot.db import buildrequests
 from buildbot.db import builds
 from buildbot.db import buildsets
-from buildbot.db import buildslaves
 from buildbot.db import changes
 from buildbot.db import changesources
 from buildbot.db import enginestrategy
@@ -35,10 +38,10 @@ from buildbot.db import state
 from buildbot.db import steps
 from buildbot.db import tags
 from buildbot.db import users
+from buildbot.db import workers
 from buildbot.util import service
-from twisted.application import internet
-from twisted.internet import defer
-from twisted.python import log
+from buildbot.worker_transition import WorkerAPICompatMixin
+
 
 upgrade_message = textwrap.dedent("""\
 
@@ -52,7 +55,8 @@ upgrade_message = textwrap.dedent("""\
     """).strip()
 
 
-class DBConnector(service.ReconfigurableServiceMixin, service.AsyncMultiService):
+class DBConnector(WorkerAPICompatMixin, service.ReconfigurableServiceMixin,
+                  service.AsyncMultiService):
     # The connection between Buildbot and its backend database.  This is
     # generally accessible as master.db, but is also used during upgrades.
     #
@@ -81,14 +85,17 @@ class DBConnector(service.ReconfigurableServiceMixin, service.AsyncMultiService)
         d = service.AsyncMultiService.setServiceParent(self, p)
         self.model = model.Model(self)
         self.changes = changes.ChangesConnectorComponent(self)
-        self.changesources = changesources.ChangeSourcesConnectorComponent(self)
+        self.changesources = changesources.ChangeSourcesConnectorComponent(
+            self)
         self.schedulers = schedulers.SchedulersConnectorComponent(self)
         self.sourcestamps = sourcestamps.SourceStampsConnectorComponent(self)
         self.buildsets = buildsets.BuildsetsConnectorComponent(self)
-        self.buildrequests = buildrequests.BuildRequestsConnectorComponent(self)
+        self.buildrequests = buildrequests.BuildRequestsConnectorComponent(
+            self)
         self.state = state.StateConnectorComponent(self)
         self.builds = builds.BuildsConnectorComponent(self)
-        self.buildslaves = buildslaves.BuildslavesConnectorComponent(self)
+        self.workers = workers.WorkersConnectorComponent(self)
+        self._registerOldWorkerAttr("workers", name="buildslaves")
         self.users = users.UsersConnectorComponent(self)
         self.masters = masters.MastersConnectorComponent(self)
         self.builders = builders.BuildersConnectorComponent(self)
@@ -98,9 +105,11 @@ class DBConnector(service.ReconfigurableServiceMixin, service.AsyncMultiService)
 
         self.cleanup_timer = internet.TimerService(self.CLEANUP_PERIOD,
                                                    self._doCleanup)
+        self.cleanup_timer.clock = self.master.reactor
         self.cleanup_timer.setServiceParent(self)
         return d
 
+    @defer.inlineCallbacks
     def setup(self, check_version=True, verbose=True):
         db_url = self.configured_url = self.master.config.db['db_url']
 
@@ -110,22 +119,16 @@ class DBConnector(service.ReconfigurableServiceMixin, service.AsyncMultiService)
         # set up the engine and pool
         self._engine = enginestrategy.create_engine(db_url,
                                                     basedir=self.basedir)
-        self.pool = pool.DBThreadPool(self._engine, verbose=verbose)
+        self.pool = pool.DBThreadPool(
+            self._engine, reactor=self.master.reactor, verbose=verbose)
 
         # make sure the db is up to date, unless specifically asked not to
         if check_version:
-            d = self.model.is_current()
-
-            @d.addCallback
-            def check_current(res):
-                if not res:
-                    for l in upgrade_message.format(basedir=self.master.basedir).split('\n'):
-                        log.msg(l)
-                    raise exceptions.DatabaseNotReadyError()
-        else:
-            d = defer.succeed(None)
-
-        return d
+            current = yield self.model.is_current()
+            if not current:
+                for l in upgrade_message.format(basedir=self.master.basedir).split('\n'):
+                    log.msg(l)
+                raise exceptions.DatabaseNotReadyError()
 
     def reconfigServiceWithBuildbotConfig(self, new_config):
         # double-check -- the master ensures this in config checks

@@ -8,11 +8,11 @@ Requirements
 Common Requirements
 -------------------
 
-At a bare minimum, you'll need the following for both the buildmaster and a buildslave:
+At a bare minimum, you'll need the following for both the buildmaster and a worker:
 
 Python: http://www.python.org
 
-  Both Buildbot master and Buildbot slave require Python-2.6, although Python-2.7 is recommended.
+  Both Buildbot master and Buildbot worker require Python-2.6, although Python-2.7 is recommended.
 
   .. note::
 
@@ -21,8 +21,8 @@ Python: http://www.python.org
 
 Twisted: http://twistedmatrix.com
 
-  Buildbot requires Twisted-11.0.0 or later on the master, and Twisted-8.1.0 on the slave.
-  In upcoming versions of Buildbot, a newer Twisted will also be required on the slave.
+  Buildbot requires Twisted-11.0.0 or later on the master, and Twisted-8.1.0 on the worker.
+  In upcoming versions of Buildbot, a newer Twisted will also be required on the worker.
   As always, the most recent version is recommended.
   Note that Twisted requires ZopeInterface to be installed as well.
 
@@ -30,14 +30,14 @@ Future:
 
   As part of ongoing (but as-yet incomplete) work to make Buildbot compatible with Python 3, the master requires the ``future`` module.
 
-Of course, your project's build process will impose additional requirements on the buildslaves.
+Of course, your project's build process will impose additional requirements on the workers.
 These hosts must have all the tools necessary to compile and test your project's source code.
 
 Windows Support
 ~~~~~~~~~~~~~~~
 
-Buildbot - both master and slave - runs well natively on Windows.
-The slave runs well on Cygwin, but because of problems with SQLite on Cygwin, the master does not.
+Buildbot - both master and worker - runs well natively on Windows.
+The worker runs well on Cygwin, but because of problems with SQLite on Cygwin, the master does not.
 
 Buildbot's windows testing is limited to the most recent Twisted and Python versions.
 For best results, use the most recent available versions of these libraries on Windows.
@@ -56,8 +56,11 @@ Note that all of these requirements aside from SQLite can easily be installed fr
 sqlite3: http://www.sqlite.org
 
   Buildbot requires a database to store its state, and by default uses SQLite.
-  Version 3.7.0 or higher is recommended, although Buildbot will run against earlier versions -- at the risk of "Database is locked" errors.
+  Version 3.7.0 or higher is recommended, although Buildbot will run down to 3.6.16 -- at the risk of "Database is locked" errors.
   The minimum version is 3.4.0, below which parallel database queries and schema introspection fail.
+
+  Please note that Python ships with sqlite3 by default since Python 2.6.
+  Python2.6 for Windows ships with sqlite 3.6.2, thus you will not be able to run buildbot with sqlite on Windows and Python 2.6.
 
   If you configure a different database engine, then SQLite is not required.
   however note that Buildbot's own unit tests require SQLite.
@@ -81,9 +84,8 @@ SQLAlchemy-Migrate: https://sqlalchemy-migrate.readthedocs.org/en/latest/
 Python-Dateutil: http://labix.org/python-dateutil
 
   Buildbot requires Python-Dateutil in version 1.5 or higher (the last version to support Python-2.x).
-  This is a small, pure-python library.
+  This is a small, pure-Python library.
 
 Autobahn:
 
   The master requires Autobahn version 0.10.2 or higher
-

@@ -13,124 +13,135 @@
 #
 # Copyright Buildbot Team Members
 from __future__ import print_function
-from future.utils import itervalues
 
 import StringIO
-import mock
-import os
 import sys
-import textwrap
 
+import mock
+from future.utils import itervalues
 from twisted.internet import defer
 from twisted.internet import reactor
+from twisted.python.filepath import FilePath
 from twisted.trial import unittest
+from zope.interface import implementer
 
+from buildbot.config import MasterConfig
+from buildbot.interfaces import IConfigLoader
 from buildbot.master import BuildMaster
+from buildbot.plugins import worker
 from buildbot.process.results import SUCCESS
 from buildbot.process.results import statusToString
-from buildbot.test.util import dirs
-from buildslave.bot import BuildSlave
+
+try:
+    from buildbot_worker.bot import Worker
+except ImportError:
+    Worker = None
 
 
-class RunMasterBase(dirs.DirsMixin, unittest.TestCase):
+@implementer(IConfigLoader)
+class DictLoader(object):
+
+    def __init__(self, config_dict):
+        self.config_dict = config_dict
+
+    def loadConfig(self):
+        return MasterConfig.loadFromDict(self.config_dict, '<dict>')
+
+
+@defer.inlineCallbacks
+def getMaster(case, reactor, config_dict):
+    """
+    Create a started ``BuildMaster`` with the given configuration.
+    """
+    basedir = FilePath(case.mktemp())
+    basedir.createDirectory()
+    master = BuildMaster(
+        basedir.path, reactor=reactor, config_loader=DictLoader(config_dict))
+
+    if 'db_url' not in config_dict:
+        config_dict['db_url'] = 'sqlite://'
+
+    # TODO: Allow BuildMaster to transparently upgrade the database, at least
+    # for tests.
+    master.config.db['db_url'] = config_dict['db_url']
+    yield master.db.setup(check_version=False)
+    yield master.db.model.upgrade()
+    master.db.setup = lambda: None
+
+    yield master.startService()
+
+    defer.returnValue(master)
+
+
+class RunMasterBase(unittest.TestCase):
     proto = "null"
-    # If True the test cases must handle the configuration
-    # of the master in the self.master attribute themselves.
-    # The setupConfig could help the module in that task.
-    # Note that whether testCaseHandleTheirSetup is False or True
-    # in all cases, tearDown that stops the master defined in self.master
-    # will be called.
-    testCasesHandleTheirSetup = False
+
+    if Worker is None:
+        skip = "buildbot-worker package is not installed"
 
     @defer.inlineCallbacks
-    def setupConfig(self, configFunc):
+    def setupConfig(self, config_dict, startWorker=True):
         """
         Setup and start a master configured
         by the function configFunc defined in the test module.
-        @type configFunc: string
-        @param configFunc: name of a function
-        without argument defined in the test module
-        that returns a BuildmasterConfig object.
+        @type config_dict: dict
+        @param configFunc: The BuildmasterConfig dictionary.
         """
-        self.basedir = os.path.abspath('basdir')
-        self.setUpDirs(self.basedir)
-        self.configfile = os.path.join(self.basedir, 'master.cfg')
-        slaveclass = "BuildSlave"
-        if self.proto == 'pb':
-            proto = '{"pb": {"port": "tcp:0:interface=127.0.0.1"}}'
-        elif self.proto == 'null':
-            proto = '{"null": {}}'
-            slaveclass = "LocalBuildSlave"
-        # We create a master.cfg, which loads the configuration from the
-        # test module. Only the slave config is kept there, as it should not
-        # be changed
-        open(self.configfile, "w").write(textwrap.dedent("""
-            from buildbot.plugins import buildslave
-            from {module} import {configFunc}
-            c = BuildmasterConfig = {configFunc}()
-            c['slaves'] = [buildslave.{slaveclass}("local1", "localpw")]
-            c['protocols'] = {proto}
-            """).format(module=self.__class__.__module__,
-                        configFunc=configFunc,
-                        proto=proto,
-                        slaveclass=slaveclass))
-        # create the master and set its config
-        m = BuildMaster(self.basedir, self.configfile)
-        self.master = m
-
-        # update the DB
-        yield m.db.setup(check_version=False)
-        yield m.db.model.upgrade()
-
-        # stub out m.db.setup since it was already called above
-        m.db.setup = lambda: None
-
         # mock reactor.stop (which trial *really* doesn't
         # like test code to call!)
-        mock_reactor = mock.Mock(spec=reactor)
-        mock_reactor.callWhenRunning = reactor.callWhenRunning
+        stop = mock.create_autospec(reactor.stop)
+        self.patch(reactor, 'stop', stop)
 
-        # start the service
-        yield m.startService(_reactor=mock_reactor)
-        self.failIf(mock_reactor.stop.called,
+        if startWorker:
+            if self.proto == 'pb':
+                proto = {"pb": {"port": "tcp:0:interface=127.0.0.1"}}
+                workerclass = worker.Worker
+            elif self.proto == 'null':
+                proto = {"null": {}}
+                workerclass = worker.LocalWorker
+            config_dict['workers'] = [workerclass("local1", "localpw")]
+            config_dict['protocols'] = proto
+
+        m = yield getMaster(self, reactor, config_dict)
+        self.master = m
+        self.failIf(stop.called,
                     "startService tried to stop the reactor; check logs")
+        # and shutdown the db threadpool, as is normally done at reactor stop
+        self.addCleanup(m.db.pool.shutdown)
+        self.addCleanup(m.stopService)
+
+        if not startWorker:
+            return
 
         if self.proto == 'pb':
-            # We find out the slave port automatically
-            slavePort = list(itervalues(m.pbmanager.dispatchers))[0].port.getHost().port
+            # We find out the worker port automatically
+            workerPort = list(itervalues(m.pbmanager.dispatchers))[
+                0].port.getHost().port
 
-            # create a slave, and attach it to the master, it will be started, and stopped
+            # create a worker, and attach it to the master, it will be started, and stopped
             # along with the master
-            s = BuildSlave("127.0.0.1", slavePort, "local1", "localpw", self.basedir, False, False)
+            worker_dir = FilePath(self.mktemp())
+            worker_dir.createDirectory()
+            self.w = Worker(
+                "127.0.0.1", workerPort, "local1", "localpw", worker_dir.path,
+                False)
         elif self.proto == 'null':
-            s = None
-        if s is not None:
-            s.setServiceParent(m)
+            self.w = None
+        if self.w is not None:
+            self.w.startService()
+            self.addCleanup(self.w.stopService)
 
-    def setUp(self):
-        if self.testCasesHandleTheirSetup:
-            return defer.succeed(None)
-        return self.setupConfig("masterConfig")
+        @defer.inlineCallbacks
+        def dump():
+            if not self._passed:
+                dump = StringIO.StringIO()
+                print("FAILED! dumping build db for debug", file=dump)
+                builds = yield self.master.data.get(("builds",))
+                for build in builds:
+                    yield self.printBuild(build, dump, withLogs=True)
 
-    @defer.inlineCallbacks
-    def tearDown(self):
-        if not self._passed:
-            dump = StringIO.StringIO()
-            print("FAILED! dumping build db for debug", file=dump)
-            builds = yield self.master.data.get(("builds",))
-            for build in builds:
-                yield self.printBuild(build, dump, withLogs=True)
-        m = self.master
-        # stop the service
-        yield m.stopService()
-
-        # and shutdown the db threadpool, as is normally done at reactor stop
-        m.db.pool.shutdown()
-
-        # (trial will verify all reactor-based timers have been cleared, etc.)
-        self.tearDownDirs()
-        if not self._passed:
-            raise self.failureException(dump.getvalue())
+                raise self.failureException(dump.getvalue())
+        self.addCleanup(dump)
 
     @defer.inlineCallbacks
     def doForceBuild(self, wantSteps=False, wantProperties=False,
@@ -200,14 +211,17 @@ class RunMasterBase(dirs.DirsMixin, unittest.TestCase):
             print("    *** STEP %s *** ==> %s (%s)" % (step['name'], step['state_string'],
                                                        statusToString(step['results'])), file=out)
             for url in step['urls']:
-                print("       url:%s (%s)" % (url['name'], url['url']), file=out)
+                print("       url:%s (%s)" %
+                      (url['name'], url['url']), file=out)
             for log in step['logs']:
-                print("        log:%s (%d)" % (log['name'], log['num_lines']), file=out)
+                print("        log:%s (%d)" %
+                      (log['name'], log['num_lines']), file=out)
                 if step['results'] != SUCCESS or withLogs:
                     self.printLog(log, out)
 
     def printLog(self, log, out):
-        print(" " * 8 + "*********** LOG: %s *********" % (log['name'],), file=out)
+        print(" " * 8 + "*********** LOG: %s *********" %
+              (log['name'],), file=out)
         if log['type'] == 's':
             for line in log['contents']['content'].splitlines():
                 linetype = line[0]

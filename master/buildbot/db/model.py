@@ -16,16 +16,15 @@
 import migrate
 import migrate.versioning.repository
 import sqlalchemy as sa
-
 from migrate import exceptions
+from twisted.python import log
+from twisted.python import util
 
 from buildbot.db import base
 from buildbot.db.migrate_utils import should_import_changes
 from buildbot.db.migrate_utils import test_unicode
 from buildbot.db.types.json import JsonObject
 from buildbot.util import sautils
-from twisted.python import log
-from twisted.python import util
 
 try:
     from migrate.versioning.schema import ControlledSchema
@@ -90,7 +89,7 @@ class Model(base.DBConnectorComponent):
     )
 
     # Each row in this table represents a claimed build request, where the
-    # claim is made by the object referenced by objectid.
+    # claim is made by the master referenced by masterid.
     buildrequest_claims = sautils.Table(
         'buildrequest_claims', metadata,
         sa.Column('brid', sa.Integer, sa.ForeignKey('buildrequests.id'),
@@ -125,12 +124,12 @@ class Model(base.DBConnectorComponent):
         # We use use_alter to prevent circular reference
         # (buildrequests -> buildsets -> builds).
         sa.Column('buildrequestid', sa.Integer,
-                  sa.ForeignKey('buildrequests.id', use_alter=True, name='buildrequestid'),
+                  sa.ForeignKey(
+                      'buildrequests.id', use_alter=True, name='buildrequestid'),
                   nullable=False),
-        # slave which performed this build
-        # TODO: ForeignKey to buildslaves table, named buildslaveid (#3088)
-        # TODO: keep nullable to support slave-free builds (#3088)
-        sa.Column('buildslaveid', sa.Integer),
+        # worker which performed this build
+        # keep nullable to support worker-free builds
+        sa.Column('workerid', sa.Integer, sa.ForeignKey('workers.id')),
         # master which controlled this build
         sa.Column('masterid', sa.Integer, sa.ForeignKey('masters.id'),
                   nullable=False),
@@ -154,7 +153,8 @@ class Model(base.DBConnectorComponent):
         sa.Column('state_string', sa.Text, nullable=False, server_default=''),
         sa.Column('results', sa.Integer),
         sa.Column('urls_json', sa.Text, nullable=False),
-        sa.Column('hidden', sa.SmallInteger, nullable=False, server_default='0'),
+        sa.Column(
+            'hidden', sa.SmallInteger, nullable=False, server_default='0'),
     )
 
     # logs
@@ -256,32 +256,32 @@ class Model(base.DBConnectorComponent):
                   nullable=False),
     )
 
-    # buildslaves
-    buildslaves = sautils.Table(
-        "buildslaves", metadata,
+    # workers
+    workers = sautils.Table(
+        "workers", metadata,
         sa.Column("id", sa.Integer, primary_key=True),
         sa.Column("name", sa.String(50), nullable=False),
         sa.Column("info", JsonObject, nullable=False),
     )
 
-    # link buildslaves to all builder/master pairs for which they are
+    # link workers to all builder/master pairs for which they are
     # configured
-    configured_buildslaves = sautils.Table(
-        'configured_buildslaves', metadata,
+    configured_workers = sautils.Table(
+        'configured_workers', metadata,
         sa.Column('id', sa.Integer, primary_key=True, nullable=False),
         sa.Column('buildermasterid', sa.Integer,
                   sa.ForeignKey('builder_masters.id'), nullable=False),
-        sa.Column('buildslaveid', sa.Integer, sa.ForeignKey('buildslaves.id'),
+        sa.Column('workerid', sa.Integer, sa.ForeignKey('workers.id'),
                   nullable=False),
     )
 
-    # link buildslaves to the masters they are currently connected to
-    connected_buildslaves = sautils.Table(
-        'connected_buildslaves', metadata,
+    # link workers to the masters they are currently connected to
+    connected_workers = sautils.Table(
+        'connected_workers', metadata,
         sa.Column('id', sa.Integer, primary_key=True, nullable=False),
         sa.Column('masterid', sa.Integer,
                   sa.ForeignKey('masters.id'), nullable=False),
-        sa.Column('buildslaveid', sa.Integer, sa.ForeignKey('buildslaves.id'),
+        sa.Column('workerid', sa.Integer, sa.ForeignKey('workers.id'),
                   nullable=False),
     )
 
@@ -324,17 +324,17 @@ class Model(base.DBConnectorComponent):
         sa.Column('changeid', sa.Integer, primary_key=True),
 
         # author's name (usually an email address)
-        sa.Column('author', sa.String(256), nullable=False),
+        sa.Column('author', sa.String(255), nullable=False),
 
         # commit comment
         sa.Column('comments', sa.Text, nullable=False),
 
         # The branch where this change occurred.  When branch is NULL, that
         # means the main branch (trunk, master, etc.)
-        sa.Column('branch', sa.String(256)),
+        sa.Column('branch', sa.String(255)),
 
         # revision identifier for this change
-        sa.Column('revision', sa.String(256)),  # CVS uses NULL
+        sa.Column('revision', sa.String(255)),  # CVS uses NULL
 
         sa.Column('revlink', sa.String(256)),
 
@@ -344,7 +344,7 @@ class Model(base.DBConnectorComponent):
         sa.Column('when_timestamp', sa.Integer, nullable=False),
 
         # an arbitrary string used for filtering changes
-        sa.Column('category', sa.String(256)),
+        sa.Column('category', sa.String(255)),
 
         # repository specifies, along with revision and branch, the
         # source tree in which this change was detected.
@@ -366,8 +366,10 @@ class Model(base.DBConnectorComponent):
 
         # The parent of the change
         # Even if for the moment there's only 1 parent for a change, we use plural here because
-        # somedays a change will have multiple parent. This way we don't need to change the API
-        sa.Column('parent_changeids', sa.Integer, sa.ForeignKey('changes.changeid'), nullable=True),
+        # somedays a change will have multiple parent. This way we don't need
+        # to change the API
+        sa.Column('parent_changeids', sa.Integer, sa.ForeignKey(
+            'changes.changeid'), nullable=True),
     )
 
     # sourcestamps
@@ -553,7 +555,7 @@ class Model(base.DBConnectorComponent):
         sa.Column("objectid", sa.Integer, sa.ForeignKey('objects.id'),
                   nullable=False),
         # name for this value (local to the object)
-        sa.Column("name", sa.String(length=256), nullable=False),
+        sa.Column("name", sa.String(length=255), nullable=False),
         # value, as a JSON string
         sa.Column("value_json", sa.Text, nullable=False),
     )
@@ -568,7 +570,7 @@ class Model(base.DBConnectorComponent):
         sa.Column("uid", sa.Integer, primary_key=True),
 
         # identifier (nickname) for this user; used for display
-        sa.Column("identifier", sa.String(256), nullable=False),
+        sa.Column("identifier", sa.String(255), nullable=False),
 
         # username portion of user credentials for authentication
         sa.Column("bb_username", sa.String(128)),
@@ -623,7 +625,7 @@ class Model(base.DBConnectorComponent):
     sa.Index('buildsets_submitted_at', buildsets.c.submitted_at)
     sa.Index('buildset_properties_buildsetid',
              buildset_properties.c.buildsetid)
-    sa.Index('buildslaves_name', buildslaves.c.name, unique=True)
+    sa.Index('workers_name', workers.c.name, unique=True)
     sa.Index('changes_branch', changes.c.branch)
     sa.Index('changes_revision', changes.c.revision)
     sa.Index('changes_author', changes.c.author)
@@ -651,18 +653,18 @@ class Model(base.DBConnectorComponent):
              builders_tags.c.builderid,
              builders_tags.c.tagid,
              unique=True)
-    sa.Index('configured_slaves_buildmasterid',
-             configured_buildslaves.c.buildermasterid)
-    sa.Index('configured_slaves_slaves', configured_buildslaves.c.buildslaveid)
-    sa.Index('configured_slaves_identity',
-             configured_buildslaves.c.buildermasterid,
-             configured_buildslaves.c.buildslaveid, unique=True)
-    sa.Index('connected_slaves_masterid',
-             connected_buildslaves.c.masterid)
-    sa.Index('connected_slaves_slaves', connected_buildslaves.c.buildslaveid)
-    sa.Index('connected_slaves_identity',
-             connected_buildslaves.c.masterid,
-             connected_buildslaves.c.buildslaveid, unique=True)
+    sa.Index('configured_workers_buildmasterid',
+             configured_workers.c.buildermasterid)
+    sa.Index('configured_workers_workers', configured_workers.c.workerid)
+    sa.Index('configured_workers_identity',
+             configured_workers.c.buildermasterid,
+             configured_workers.c.workerid, unique=True)
+    sa.Index('connected_workers_masterid',
+             connected_workers.c.masterid)
+    sa.Index('connected_workers_workers', connected_workers.c.workerid)
+    sa.Index('connected_workers_identity',
+             connected_workers.c.masterid,
+             connected_workers.c.workerid, unique=True)
     sa.Index('users_identifier', users.c.identifier, unique=True)
     sa.Index('users_info_uid', users_info.c.uid)
     sa.Index('users_info_uid_attr_type', users_info.c.uid,
@@ -688,8 +690,8 @@ class Model(base.DBConnectorComponent):
     sa.Index('builds_number',
              builds.c.builderid, builds.c.number,
              unique=True)
-    sa.Index('builds_buildslaveid',
-             builds.c.buildslaveid)
+    sa.Index('builds_workerid',
+             builds.c.workerid)
     sa.Index('builds_masterid',
              builds.c.masterid)
     sa.Index('steps_number', steps.c.buildid, steps.c.number,
@@ -789,10 +791,11 @@ class Model(base.DBConnectorComponent):
         def upgrade(engine):
             schema = ControlledSchema(engine, self.repo_path)
             changeset = schema.changeset(None)
-            for version, change in changeset:
-                log.msg('migrating schema version %s -> %d'
-                        % (version, version + 1))
-                schema.runchange(version, change, 1)
+            with sautils.withoutSqliteForeignKeys(engine):
+                for version, change in changeset:
+                    log.msg('migrating schema version %s -> %d'
+                            % (version, version + 1))
+                    schema.runchange(version, change, 1)
 
         def check_sqlalchemy_migrate_version():
             # sqlalchemy-migrate started including a version number in 0.7; we
@@ -853,7 +856,8 @@ class Model(base.DBConnectorComponent):
                 version_control(engine)
                 upgrade(engine)
             # otherwise, this db is new, so we dont bother using the migration engine
-            # and just create the tables, and put the version directly to latest
+            # and just create the tables, and put the version directly to
+            # latest
             else:
                 # do some tests before getting started
                 test_unicode(engine)

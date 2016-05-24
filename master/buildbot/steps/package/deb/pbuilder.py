@@ -16,7 +16,6 @@
 """
 Steps and objects related to pbuilder
 """
-
 import re
 import stat
 import time
@@ -112,14 +111,17 @@ class DebPbuilder(WarningCountingShellCommand):
         if not self.distribution:
             config.error("You must specify a distribution.")
 
-        self.command = ['pdebuild', '--buildresult', '.', '--pbuilder', self.pbuilder]
+        self.command = [
+            'pdebuild', '--buildresult', '.', '--pbuilder', self.pbuilder]
         if self.architecture:
             self.command += ['--architecture', self.architecture]
-        self.command += ['--', '--buildresult', '.', self.baseOption, self.basetgz]
+        self.command += ['--', '--buildresult',
+                         '.', self.baseOption, self.basetgz]
         if self.extrapackages:
             self.command += ['--extrapackages', " ".join(self.extrapackages)]
 
-        self.suppressions.append((None, re.compile(r"\.pbuilderrc does not exist"), None, None))
+        self.suppressions.append(
+            (None, re.compile(r"\.pbuilderrc does not exist"), None, None))
 
         self.addLogObserver(
             'stdio', logobserver.LineConsumerLogObserver(self.logConsumer))

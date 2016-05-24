@@ -12,23 +12,17 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-from future.utils import iteritems
-from future.utils import itervalues
-
-try:
-    import cStringIO as StringIO
-    assert StringIO
-except ImportError:
-    import StringIO
 import re
 
+from future.utils import iteritems
+from future.utils import itervalues
 from twisted.internet import defer
 from twisted.internet import error
+from twisted.python import util as twutil
 from twisted.python import components
 from twisted.python import deprecate
 from twisted.python import failure
 from twisted.python import log
-from twisted.python import util as twutil
 from twisted.python import versions
 from twisted.python.failure import Failure
 from twisted.python.reflect import accumulateClassList
@@ -38,23 +32,33 @@ from zope.interface import implements
 from buildbot import config
 from buildbot import interfaces
 from buildbot import util
-from buildbot.interfaces import BuildSlaveTooOldError
+from buildbot.interfaces import WorkerTooOldError
 from buildbot.process import log as plog
 from buildbot.process import logobserver
 from buildbot.process import properties
 from buildbot.process import remotecommand
 from buildbot.process import results
+# (WithProperties used to be available in this module)
+from buildbot.process.properties import WithProperties
 from buildbot.process.results import CANCELLED
 from buildbot.process.results import EXCEPTION
 from buildbot.process.results import FAILURE
 from buildbot.process.results import RETRY
-from buildbot.process.results import Results
 from buildbot.process.results import SKIPPED
 from buildbot.process.results import SUCCESS
 from buildbot.process.results import WARNINGS
+from buildbot.process.results import Results
 from buildbot.process.results import worst_status
 from buildbot.util import debounce
 from buildbot.util import flatten
+from buildbot.worker_transition import WorkerAPICompatMixin
+from buildbot.worker_transition import deprecatedWorkerClassMethod
+
+try:
+    import cStringIO as StringIO
+    assert StringIO
+except ImportError:
+    import StringIO
 
 
 class BuildStepFailed(Exception):
@@ -84,7 +88,7 @@ class _BuildStepFactory(util.ComparableMixin):
     We use an instance of this class, rather than a closure mostly to make it
     easier to test that the right factories are getting created.
     """
-    compare_attrs = ['factory', 'args', 'kwargs']
+    compare_attrs = ('factory', 'args', 'kwargs')
     implements(interfaces.IBuildStepFactory)
 
     def __init__(self, factory, *args, **kwargs):
@@ -238,7 +242,8 @@ class BuildStepStatus(object):
 
 
 class BuildStep(results.ResultComputingConfigMixin,
-                properties.PropertiesMixin):
+                properties.PropertiesMixin,
+                WorkerAPICompatMixin):
 
     implements(interfaces.IBuildStep)
 
@@ -294,7 +299,6 @@ class BuildStep(results.ResultComputingConfigMixin,
     progressMetrics = ()  # 'time' is implicit
     useProgress = True  # set to False if step is really unpredictable
     build = None
-    buildslave = None
     step_status = None
     progress = None
     logEncoding = None
@@ -305,6 +309,9 @@ class BuildStep(results.ResultComputingConfigMixin,
     _run_finished_hook = lambda self: None  # for tests
 
     def __init__(self, **kwargs):
+        self.worker = None
+        self._registerOldWorkerAttr("worker", name="buildslave")
+
         for p in self.__class__.parms:
             if p in kwargs:
                 setattr(self, p, kwargs.pop(p))
@@ -342,8 +349,10 @@ class BuildStep(results.ResultComputingConfigMixin,
         self.build = build
         self.master = self.build.master
 
-    def setBuildSlave(self, buildslave):
-        self.buildslave = buildslave
+    def setWorker(self, worker):
+        self.worker = worker
+    deprecatedWorkerClassMethod(
+        locals(), setWorker, compat_name="setBuildSlave")
 
     @deprecate.deprecated(versions.Version("buildbot", 0, 9, 0))
     def setDefaultWorkdir(self, workdir):
@@ -356,7 +365,8 @@ class BuildStep(results.ResultComputingConfigMixin,
         if self._workdir is not None or self.build is None:
             return self._workdir
         else:
-            # see :ref:`Factory-Workdir-Functions` for details on how to customize this
+            # see :ref:`Factory-Workdir-Functions` for details on how to
+            # customize this
             if callable(self.build.workdir):
                 return self.build.workdir(self.build.sources)
             else:
@@ -454,9 +464,9 @@ class BuildStep(results.ResultComputingConfigMixin,
         # convert all locks into their real form
         self.locks = [(self.build.builder.botmaster.getLockFromLockAccess(access), access)
                       for access in self.locks]
-        # then narrow SlaveLocks down to the slave that this build is being
+        # then narrow WorkerLocks down to the worker that this build is being
         # run on
-        self.locks = [(l.getLock(self.build.slavebuilder.slave), la)
+        self.locks = [(l.getLock(self.build.workerforbuilder.worker), la)
                       for l, la in self.locks]
 
         for l, la in self.locks:
@@ -527,7 +537,7 @@ class BuildStep(results.ResultComputingConfigMixin,
             # that this should just be exception due to interrupt
             # At the same time we must respect RETRY status because it's used
             # to retry interrupted build due to some other issues for example
-            # due to slave lost
+            # due to worker lost
             if self.results != CANCELLED:
                 self.results = EXCEPTION
 
@@ -550,10 +560,26 @@ class BuildStep(results.ResultComputingConfigMixin,
 
         yield self.master.data.updates.finishStep(self.stepid, self.results,
                                                   hidden)
-
+        # finish unfinished logs
+        all_finished = yield self.finishUnfinishedLogs()
+        if not all_finished:
+            self.results = EXCEPTION
         self.releaseLocks()
 
         defer.returnValue(self.results)
+
+    @defer.inlineCallbacks
+    def finishUnfinishedLogs(self):
+        ok = True
+        not_finished_logs = [v for (k, v) in iteritems(self.logs)
+                             if not v.finished]
+        finish_logs = yield defer.DeferredList([v.finish() for v in not_finished_logs],
+                                               consumeErrors=True)
+        for success, res in finish_logs:
+            if not success:
+                log.err(res, "when trying to finish a log")
+                ok = False
+        defer.returnValue(ok)
 
     def acquireLocks(self, res=None):
         self._acquiringLock = None
@@ -624,19 +650,20 @@ class BuildStep(results.ResultComputingConfigMixin,
                                      consumeErrors=True)
             self._start_deferred = None
             unhandled = self._start_unhandled_deferreds
-            self._start_unhandled_deferreds = None
             self.realUpdateSummary()
 
-        # Wait for any possibly-unhandled deferreds.  If any fail, change the
-        # result to EXCEPTION and log.
-        if unhandled:
-            unhandled_results = yield defer.DeferredList(unhandled,
-                                                         consumeErrors=True)
-            for success, res in unhandled_results:
-                if not success:
-                    log.err(
-                        res, "from an asynchronous method executed in an old-style step")
-                    results = EXCEPTION
+            # Wait for any possibly-unhandled deferreds.  If any fail, change the
+            # result to EXCEPTION and log.
+            while unhandled:
+                self._start_unhandled_deferreds = []
+                unhandled_results = yield defer.DeferredList(unhandled,
+                                                             consumeErrors=True)
+                for success, res in unhandled_results:
+                    if not success:
+                        log.err(
+                            res, "from an asynchronous method executed in an old-style step")
+                        results = EXCEPTION
+                unhandled = self._start_unhandled_deferreds
 
         defer.returnValue(results)
 
@@ -655,6 +682,9 @@ class BuildStep(results.ResultComputingConfigMixin,
         return self.run.im_func is not BuildStep.run.im_func
 
     def start(self):
+        # New-style classes implement 'run'.
+        # Old-style classes implemented 'start'. Advise them to do 'run'
+        # instead.
         raise NotImplementedError("your subclass must implement run()")
 
     def interrupt(self, reason):
@@ -688,24 +718,28 @@ class BuildStep(results.ResultComputingConfigMixin,
 
     # utility methods that BuildSteps may find useful
 
-    def slaveVersion(self, command, oldversion=None):
-        return self.build.getSlaveCommandVersion(command, oldversion)
+    def workerVersion(self, command, oldversion=None):
+        return self.build.getWorkerCommandVersion(command, oldversion)
+    deprecatedWorkerClassMethod(locals(), workerVersion)
 
-    def slaveVersionIsOlderThan(self, command, minversion):
-        sv = self.build.getSlaveCommandVersion(command, None)
+    def workerVersionIsOlderThan(self, command, minversion):
+        sv = self.build.getWorkerCommandVersion(command, None)
         if sv is None:
             return True
         if map(int, sv.split(".")) < map(int, minversion.split(".")):
             return True
         return False
+    deprecatedWorkerClassMethod(locals(), workerVersionIsOlderThan)
 
-    def checkSlaveHasCommand(self, command):
-        if not self.slaveVersion(command):
-            message = "slave is too old, does not know about %s" % command
-            raise BuildSlaveTooOldError(message)
+    def checkWorkerHasCommand(self, command):
+        if not self.workerVersion(command):
+            message = "worker is too old, does not know about %s" % command
+            raise WorkerTooOldError(message)
+    deprecatedWorkerClassMethod(locals(), checkWorkerHasCommand)
 
-    def getSlaveName(self):
-        return self.build.getSlaveName()
+    def getWorkerName(self):
+        return self.build.getWorkerName()
+    deprecatedWorkerClassMethod(locals(), getWorkerName)
 
     def addLog(self, name, type='s', logEncoding=None):
         d = self.master.data.updates.addLog(self.stepid,
@@ -798,7 +832,7 @@ class BuildStep(results.ResultComputingConfigMixin,
     @defer.inlineCallbacks
     def runCommand(self, command):
         self.cmd = command
-        command.buildslave = self.buildslave
+        command.worker = self.worker
         try:
             res = yield command.run(self, self.remote, self.build.builder.name)
         finally:
@@ -952,7 +986,8 @@ class LoggingBuildStep(BuildStep):
         pass
 
     def evaluateCommand(self, cmd):
-        # NOTE: log_eval_func is undocumented, and will die with LoggingBuildStep/ShellCOmmand
+        # NOTE: log_eval_func is undocumented, and will die with
+        # LoggingBuildStep/ShellCOmmand
         if self.log_eval_func:
             # self.step_status probably doesn't have the desired behaviors, but
             # those were never well-defined..
@@ -1116,17 +1151,17 @@ class ShellMixin(object):
 
         # check for the usePTY flag
         if kwargs['usePTY'] != 'slave-config':
-            if self.slaveVersionIsOlderThan("shell", "2.7"):
+            if self.workerVersionIsOlderThan("shell", "2.7"):
                 if stdio is not None:
                     yield stdio.addHeader(
-                        "NOTE: slave does not allow master to override usePTY\n")
+                        "NOTE: worker does not allow master to override usePTY\n")
                 del kwargs['usePTY']
 
         # check for the interruptSignal flag
-        if kwargs["interruptSignal"] and self.slaveVersionIsOlderThan("shell", "2.15"):
+        if kwargs["interruptSignal"] and self.workerVersionIsOlderThan("shell", "2.15"):
             if stdio is not None:
                 yield stdio.addHeader(
-                    "NOTE: slave does not allow master to specify interruptSignal\n")
+                    "NOTE: worker does not allow master to specify interruptSignal\n")
             del kwargs['interruptSignal']
 
         # lazylogfiles are handled below
@@ -1182,7 +1217,8 @@ class ShellMixin(object):
 #   ...,
 #   log_eval_func=lambda c,s: regex_log_evaluator(c, s, regexs)
 # )
-# NOTE: log_eval_func is undocumented, and will die with LoggingBuildStep/ShellCOmmand
+# NOTE: log_eval_func is undocumented, and will die with
+# LoggingBuildStep/ShellCOmmand
 
 
 def regex_log_evaluator(cmd, _, regexes):
@@ -1199,7 +1235,5 @@ def regex_log_evaluator(cmd, _, regexes):
                     worst = possible_status
     return worst
 
-# (WithProperties used to be available in this module)
-from buildbot.process.properties import WithProperties
 _hush_pyflakes = [WithProperties]
 del _hush_pyflakes

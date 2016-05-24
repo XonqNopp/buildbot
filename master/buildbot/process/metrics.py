@@ -31,21 +31,21 @@ Basic architecture:
           \/
     MetricWatcher
 """
-from future.utils import iteritems
-
+import gc
+import os
+import sys
+from collections import defaultdict
 from collections import deque
 
-from buildbot import util
-from buildbot.util import service as util_service
-from collections import defaultdict
+from future.utils import iteritems
 from twisted.application import service
 from twisted.internet import reactor
 from twisted.internet.task import LoopingCall
 from twisted.python import log
 
-import gc
-import os
-import sys
+from buildbot import util
+from buildbot.util import service as util_service
+
 # Make use of the resource module if we can
 try:
     import resource
@@ -292,33 +292,33 @@ class MetricAlarmHandler(MetricHandler):
         return dict(alarms=retval)
 
 
-class AttachedSlavesWatcher(object):
+class AttachedWorkersWatcher(object):
 
     def __init__(self, metrics):
         self.metrics = metrics
 
     def run(self):
-        # Check if 'BotMaster.attached_slaves' equals
-        # 'AbstractBuildSlave.attached_slaves'
+        # Check if 'BotMaster.attached_workers' equals
+        # 'AbstractWorker.attached_workers'
         h = self.metrics.getHandler(MetricCountEvent)
         if not h:
             log.msg("Couldn't get MetricCountEvent handler")
-            MetricAlarmEvent.log('AttachedSlavesWatcher',
+            MetricAlarmEvent.log('AttachedWorkersWatcher',
                                  msg="Coudln't get MetricCountEvent handler",
                                  level=ALARM_WARN)
             return
-        botmaster_count = h.get('BotMaster.attached_slaves')
-        buildslave_count = h.get('AbstractBuildSlave.attached_slaves')
+        botmaster_count = h.get('BotMaster.attached_workers')
+        worker_count = h.get('AbstractWorker.attached_workers')
 
         # We let these be off by one since they're counted at slightly
         # different times
-        if abs(botmaster_count - buildslave_count) > 1:
+        if abs(botmaster_count - worker_count) > 1:
             level = ALARM_WARN
         else:
             level = ALARM_OK
 
-        MetricAlarmEvent.log('attached_slaves',
-                             msg='%s %s' % (botmaster_count, buildslave_count),
+        MetricAlarmEvent.log('attached_workers',
+                             msg='%s %s' % (botmaster_count, worker_count),
                              level=level)
 
 
@@ -356,7 +356,8 @@ def periodicCheck(_reactor=reactor):
                 if a == 'ru_maxrss' and v == 0:
                     v = _get_rss() * resource.getpagesize() / 1024
                 MetricCountEvent.log('resource.%s' % a, v, absolute=True)
-            MetricCountEvent.log('resource.pagesize', resource.getpagesize(), absolute=True)
+            MetricCountEvent.log(
+                'resource.pagesize', resource.getpagesize(), absolute=True)
         # Measure the reactor delay
         then = util.now(_reactor)
         dt = 0.1
@@ -393,7 +394,7 @@ class MetricLogObserver(util_service.ReconfigurableServiceMixin,
         self.registerHandler(MetricAlarmEvent, MetricAlarmHandler(self))
 
         self.getHandler(MetricCountEvent).addWatcher(
-            AttachedSlavesWatcher(self))
+            AttachedWorkersWatcher(self))
 
     def reconfigServiceWithBuildbotConfig(self, new_config):
         # first, enable or disable

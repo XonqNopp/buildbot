@@ -118,7 +118,8 @@ class WebHookTransmitter(status.base.StatusReceiverMultiService):
         d.addCallback(lambda x: log.msg("Completed %s event hook on attempt %d" %
                                         (event, attempt + 1)))
         d.addErrback(_maybe_retry)
-        d.addErrback(lambda e: log.err("Giving up delivering %s to %s" % (event, u)))
+        d.addErrback(
+            lambda e: log.err("Giving up delivering %s to %s" % (event, u)))
 
     def builderAdded(self, builderName, builder):
         builder.subscribe(self)

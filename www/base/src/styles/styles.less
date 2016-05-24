@@ -3,11 +3,6 @@
 @import "../../libs/font-awesome/less/font-awesome.less";
 @import (inline) "../../libs/guanlecoja-ui/styles.css";
 @fa-font-path: "./fonts";
-
-// Import colors and animation stylesheet
-@import "animations.less";
-@import "colors.less";
-
 /* base css for angular, dont display anything until angular is running */
 [ng\:cloak], [ng-cloak], [data-ng-cloak], [x-ng-cloak], .ng-cloak, .x-ng-cloak {
   display: none !important;
@@ -15,8 +10,15 @@
 
 /* modal dialog customizations */
 @media screen {
-  .modal-dialog {
-    width: 90%;
+  .modal-xlg {
+    .modal-dialog {
+        width: 90%;
+    }
+    /*Sets the maximum height of the modal body to 80% of the screen height*/
+    .modal-body {
+        overflow-y: auto;
+        max-height: 80vh;
+    }
   }
 
   /* border-radius looks strange for navbar,
@@ -26,9 +28,9 @@
   }
 }
 
-/* make the sidebar be on the back when dialog is open */
-.modal-open .sidebar {
-    z-index: 0;
+/* make the sidebar be on the back of the modals dialog */
+.sidebar {
+    z-index: (@zindex-modal - 1) !important;
 }
 
 /* button bar inside the breadcrum, used for forcesched buttons */

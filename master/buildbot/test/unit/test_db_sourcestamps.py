@@ -13,6 +13,9 @@
 #
 # Copyright Buildbot Team Members
 from future.utils import iteritems
+from twisted.internet import defer
+from twisted.internet import task
+from twisted.trial import unittest
 
 from buildbot.db import sourcestamps
 from buildbot.test.fake import fakedb
@@ -21,9 +24,6 @@ from buildbot.test.util import connector_component
 from buildbot.test.util import interfaces
 from buildbot.test.util import validation
 from buildbot.util import epoch2datetime
-from twisted.internet import defer
-from twisted.internet import task
-from twisted.trial import unittest
 
 CREATED_AT = 927845299
 
@@ -279,7 +279,7 @@ class Tests(interfaces.InterfaceTests):
 
     def test_getSourceStampsForBuild_OneCodeBase(self):
         rows = [fakedb.Master(id=88, name="bar"),
-                fakedb.Buildslave(id=13, name='one'),
+                fakedb.Worker(id=13, name='one'),
                 fakedb.Builder(id=77, name='A'),
                 fakedb.SourceStamp(id=234, codebase='A', created_at=CREATED_AT,
                                    revision="aaa"),
@@ -290,7 +290,7 @@ class Tests(interfaces.InterfaceTests):
                 fakedb.BuildRequest(id=19, buildsetid=30, builderid=77,
                                     priority=13, submitted_at=1300305712, results=-1),
                 fakedb.Build(id=50, buildrequestid=19, number=5, masterid=88,
-                             builderid=77, state_string="test", buildslaveid=13,
+                             builderid=77, state_string="test", workerid=13,
                              started_at=1304262222), ]
 
         expected = [{
@@ -312,7 +312,7 @@ class Tests(interfaces.InterfaceTests):
 
     def test_getSourceStampsForBuild_3CodeBases(self):
         rows = [fakedb.Master(id=88, name="bar"),
-                fakedb.Buildslave(id=13, name='one'),
+                fakedb.Worker(id=13, name='one'),
                 fakedb.Builder(id=77, name='A'),
                 fakedb.SourceStamp(id=234, codebase='A', created_at=CREATED_AT,
                                    revision="aaa"),
@@ -329,7 +329,7 @@ class Tests(interfaces.InterfaceTests):
                 fakedb.BuildRequest(id=19, buildsetid=30, builderid=77,
                                     priority=13, submitted_at=1300305712, results=-1),
                 fakedb.Build(id=50, buildrequestid=19, number=5, masterid=88,
-                             builderid=77, state_string="test", buildslaveid=13,
+                             builderid=77, state_string="test", workerid=13,
                              started_at=1304262222), ]
 
         expected = [{'branch': u'master',
@@ -397,7 +397,7 @@ class TestRealDB(unittest.TestCase,
             table_names=['sourcestamps',
                          'patches',
                          'masters',
-                         'buildslaves',
+                         'workers',
                          'buildsets',
                          'builders',
                          'buildrequests',

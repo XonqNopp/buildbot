@@ -57,7 +57,7 @@ with:
 
 .. code-block:: python
 
-    c['www'] = dict(port=8020,
+    c['www'] = dict(port=8010,
                     plugins=dict(waterfall_view={},
                     console_view={}))
 
@@ -105,8 +105,6 @@ The available reporters as of 0.9.0 are
 
 * :bb:reporter:`IRC`
 
-* :bb:reporter:`StatusPush`
-
 * :bb:reporter:`HttpStatusPush`
 
 * :bb:reporter:`GerritStatusPush`
@@ -117,7 +115,7 @@ See the reporter index for the full, current list.
 
 A few notes on changes to the configuration of these reporters:
 
-* :bb:reporter:`MailNotifier` argument ``messageFormatter`` should now be a :py:class:`buildbot.reporter.message.MessageFormatter`, due to the removal of the status classes (see above), such formatters must be re-implemented using the Data API.
+* :bb:reporter:`MailNotifier` argument ``messageFormatter`` should now be a :py:class:`buildbot.reporters.message.MessageFormatter`, due to the removal of the status classes (see above), such formatters must be re-implemented using the Data API.
 
 * :bb:reporter:`MailNotifier` argument ``previousBuildGetter`` is not supported anymore
 
@@ -135,7 +133,7 @@ Steps
 Buildbot-0.8.9 introduced "new-style steps", with an asynchronous ``run`` method.
 In the remaining 0.8.x releases, use of new-style and old-style steps were supported side-by-side.
 In 0.9.x, old-style steps are emulated using a collection of hacks to allow asynchronous calls to be called from synchronous code.
-This emulation is imperfect, and you are strongly encouraged to rewrite any custom steps as new-style steps.
+This emulation is imperfect, and you are strongly encouraged to rewrite any custom steps as :doc:`../new-style-steps`.
 
 Note that new-style steps now "push" their status when it changes, so the ``describe`` method no longer exists.
 
@@ -150,16 +148,29 @@ Unfortunately, many existing names do not fit this pattern.
 
 The following fields are identifiers:
 
-* buildslave name (50-character)
+* worker name (50-character)
 * builder name (20-character)
 * step name (50-character)
+
+Transition to "worker" terminology
+----------------------------------
+
+Since version 0.9.0 of Buildbot "slave"-based terminology is deprecated
+in favor of "worker"-based terminology.
+
+All identifiers, messages and documentation were updated to use "worker"
+instead of "slave".
+Old API names are still available, but deprecated.
+
+For details about changed API and how to control generated warnings see
+:ref:`Transition-to-worker-terminology`.
 
 Other Config Settings
 ---------------------
 
 The default master.cfg file contains some new changes, which you should look over:
 
-* ``c['protocols'] = {'pb': {'port': 9989}}`` (the default port used by the buildslaves)
+* ``c['protocols'] = {'pb': {'port': 9989}}`` (the default port used by the workers)
 * Waterfall View: requires installation (``pip install buildbot-waterfall-view``) and configuration (``c['www'] = { ..., 'plugins': {'waterfall_view': {} }``).
 
 Build History

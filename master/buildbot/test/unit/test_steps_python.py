@@ -12,6 +12,7 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+from twisted.trial import unittest
 
 from buildbot import config
 from buildbot.process.results import FAILURE
@@ -20,7 +21,7 @@ from buildbot.process.results import WARNINGS
 from buildbot.steps import python
 from buildbot.test.fake.remotecommand import ExpectShell
 from buildbot.test.util import steps
-from twisted.trial import unittest
+
 
 log_output_success = '''\
 Making output directory...
@@ -247,7 +248,8 @@ class PyLint(steps.BuildStepMixin, unittest.TestCase):
         return self.runStep()
 
     def test_regex_text_131(self):
-        # at least pylint 1.3.1 prints out space padded column offsets when using text format
+        # at least pylint 1.3.1 prints out space padded column offsets when
+        # using text format
         self.setupStep(python.PyLint(command=['pylint']))
         self.expectCommands(
             ExpectShell(workdir='wkdir', command=['pylint'],
@@ -540,7 +542,8 @@ class TestSphinx(steps.BuildStepMixin, unittest.TestCase):
                                      sphinx_builder='css',
                                      sphinx="/path/to/sphinx-build",
                                      tags=['a', 'b'],
-                                     defines=dict(empty=None, t=True, f=False, s="str"),
+                                     defines=dict(
+                                         empty=None, t=True, f=False, s="str"),
                                      mode='full'))
         self.expectCommands(
             ExpectShell(workdir='wkdir', usePTY='slave-config',

@@ -12,8 +12,10 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import mock
+from twisted.internet import defer
+from twisted.internet import task
+from twisted.trial import unittest
 
 from buildbot.data import masters
 from buildbot.process.results import RETRY
@@ -22,9 +24,6 @@ from buildbot.test.fake import fakemaster
 from buildbot.test.util import endpoint
 from buildbot.test.util import interfaces
 from buildbot.util import epoch2datetime
-from twisted.internet import defer
-from twisted.internet import task
-from twisted.trial import unittest
 
 SOMETIME = 1349016870
 OTHERTIME = 1249016870
@@ -273,12 +272,12 @@ class Master(interfaces.InterfaceTests, unittest.TestCase):
 
             # set up a running build with some steps
             fakedb.Builder(id=77, name='b1'),
-            fakedb.Buildslave(id=13, name='sl'),
+            fakedb.Worker(id=13, name='sl'),
             fakedb.Buildset(id=8822),
             fakedb.BuildRequest(id=82, builderid=77, buildsetid=8822),
             fakedb.BuildRequestClaim(brid=82, masterid=14,
                                      claimed_at=SOMETIME),
-            fakedb.Build(id=13, builderid=77, masterid=14, buildslaveid=13,
+            fakedb.Build(id=13, builderid=77, masterid=14, workerid=13,
                          buildrequestid=82, number=3, results=None),
             fakedb.Step(id=200, buildid=13),
             fakedb.Log(id=2000, stepid=200, num_lines=2),
@@ -312,7 +311,8 @@ class Master(interfaces.InterfaceTests, unittest.TestCase):
         # see that we finished off that build and its steps and logs
         updates = self.master.data.updates
         updates.finishLog.assert_called_with(logid=2000)
-        updates.finishStep.assert_called_with(stepid=200, results=RETRY, hidden=False)
+        updates.finishStep.assert_called_with(
+            stepid=200, results=RETRY, hidden=False)
         updates.finishBuild.assert_called_with(buildid=13, results=RETRY)
 
         self.assertEqual(self.master.mq.productions, [

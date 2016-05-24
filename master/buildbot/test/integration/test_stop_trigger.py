@@ -12,6 +12,8 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+import sys
+import textwrap
 
 from twisted.internet import defer
 from twisted.internet import reactor
@@ -23,7 +25,8 @@ from buildbot.process.factory import BuildFactory
 from buildbot.process.results import CANCELLED
 from buildbot.test.util.integration import RunMasterBase
 
-# This integration test creates a master and slave environment,
+
+# This integration test creates a master and worker environment,
 # with two builders and a trigger step linking them. the triggered build never ends
 # so that we can reliabily stop it recursively
 
@@ -47,11 +50,11 @@ def setupTriggerConfiguration(triggeredFactory, nextBuild=None):
     f.addStep(steps.ShellCommand(command='echo world'))
 
     mainBuilder = BuilderConfig(name="main",
-                                slavenames=["local1"],
+                                workernames=["local1"],
                                 factory=f)
 
     triggeredBuilderKwargs = {'name': "triggered",
-                              'slavenames': ["local1"],
+                              'workernames': ["local1"],
                               'factory': triggeredFactory}
 
     if nextBuild is not None:
@@ -65,11 +68,25 @@ def setupTriggerConfiguration(triggeredFactory, nextBuild=None):
 
 def triggerRunsForever():
     f2 = BuildFactory()
-    f2.addStep(steps.ShellCommand(command="\n".join(['while :',
-                                                     'do',
-                                                     ' echo "sleeping";',
-                                                     ' sleep 1;'
-                                                     'done'])))
+
+    # Infinite sleep command.
+    if sys.platform == 'win32':
+        # Ping localhost infinitely.
+        # There are other options, however they either don't work in
+        # non-interactive mode (e.g. 'pause'), or doesn't available on all
+        # Windows versions (e.g. 'timeout' and 'choice' are available
+        # starting from Windows 7).
+        cmd = 'ping -t 127.0.0.1'.split()
+    else:
+        cmd = textwrap.dedent("""\
+            while :
+            do
+              echo "sleeping";
+              sleep 1;
+            done
+            """)
+
+    f2.addStep(steps.ShellCommand(command=cmd))
 
     return setupTriggerConfiguration(f2)
 
@@ -84,8 +101,6 @@ def triggeredBuildIsNotCreated():
 
 
 class TriggeringMaster(RunMasterBase):
-    testCasesHandleTheirSetup = True
-
     change = dict(branch="master",
                   files=["foo.c"],
                   author="me@foo.com",
@@ -95,7 +110,7 @@ class TriggeringMaster(RunMasterBase):
 
     def assertBuildIsCancelled(self, b):
         self.assertTrue(b['complete'])
-        self.assertEquals(b['results'], CANCELLED)
+        self.assertEquals(b['results'], CANCELLED, repr(b))
 
     @defer.inlineCallbacks
     def runTest(self, newBuildCallback):
@@ -113,20 +128,21 @@ class TriggeringMaster(RunMasterBase):
 
     @defer.inlineCallbacks
     def testTriggerRunsForever(self):
-        yield self.setupConfig("triggerRunsForever")
+        yield self.setupConfig(triggerRunsForever())
         self.higherBuild = None
 
         def newCallback(_, data):
             if self.higherBuild is None:
                 self.higherBuild = data['buildid']
             else:
-                self.master.data.control("stop", {}, ("builds", self.higherBuild))
+                self.master.data.control(
+                    "stop", {}, ("builds", self.higherBuild))
                 self.higherBuild = None
         yield self.runTest(newCallback)
 
     @defer.inlineCallbacks
     def testTriggerRunsForeverAfterCmdStarted(self):
-        yield self.setupConfig("triggerRunsForever")
+        yield self.setupConfig(triggerRunsForever())
         self.higherBuild = None
 
         def newCallback(_, data):
@@ -135,7 +151,8 @@ class TriggeringMaster(RunMasterBase):
             else:
 
                 def f():
-                    self.master.data.control("stop", {}, ("builds", self.higherBuild))
+                    self.master.data.control(
+                        "stop", {}, ("builds", self.higherBuild))
                     self.higherBuild = None
                 reactor.callLater(5.0, f)
 
@@ -143,7 +160,7 @@ class TriggeringMaster(RunMasterBase):
 
     @defer.inlineCallbacks
     def testTriggeredBuildIsNotCreated(self):
-        yield self.setupConfig("triggeredBuildIsNotCreated")
+        yield self.setupConfig(triggeredBuildIsNotCreated())
 
         def newCallback(_, data):
             self.master.data.control("stop", {}, ("builds", data['buildid']))

@@ -12,16 +12,14 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import sqlalchemy as sa
+from twisted.internet import defer
+from twisted.internet import reactor
 
 from buildbot.db import NULL
 from buildbot.db import base
 from buildbot.util import epoch2datetime
 from buildbot.util import json
-
-from twisted.internet import defer
-from twisted.internet import reactor
 
 
 class BuildsConnectorComponent(base.DBConnectorComponent):
@@ -86,14 +84,15 @@ class BuildsConnectorComponent(base.DBConnectorComponent):
                                     ss['branch'],
                                     ss['codebase']) for ss in (yield gssfb(prevBuild['id']))])
                 if prevssBuild == matchssBuild:
-                    # A successful build with the same repository/branch/codebase was found !
+                    # A successful build with the same
+                    # repository/branch/codebase was found !
                     rv = prevBuild
                     break
             offset += 10
 
         defer.returnValue(rv)
 
-    def getBuilds(self, builderid=None, buildrequestid=None, buildslaveid=None, complete=None):
+    def getBuilds(self, builderid=None, buildrequestid=None, workerid=None, complete=None):
         def thd(conn):
             tbl = self.db.model.builds
             q = tbl.select()
@@ -101,8 +100,8 @@ class BuildsConnectorComponent(base.DBConnectorComponent):
                 q = q.where(tbl.c.builderid == builderid)
             if buildrequestid is not None:
                 q = q.where(tbl.c.buildrequestid == buildrequestid)
-            if buildslaveid is not None:
-                q = q.where(tbl.c.buildslaveid == buildslaveid)
+            if workerid is not None:
+                q = q.where(tbl.c.workerid == workerid)
             if complete is not None:
                 if complete:
                     q = q.where(tbl.c.complete_at != NULL)
@@ -112,7 +111,7 @@ class BuildsConnectorComponent(base.DBConnectorComponent):
             return [self._builddictFromRow(row) for row in res.fetchall()]
         return self.db.pool.do(thd)
 
-    def addBuild(self, builderid, buildrequestid, buildslaveid, masterid,
+    def addBuild(self, builderid, buildrequestid, workerid, masterid,
                  state_string, _reactor=reactor, _race_hook=None):
         started_at = _reactor.seconds()
 
@@ -133,7 +132,7 @@ class BuildsConnectorComponent(base.DBConnectorComponent):
                     r = conn.execute(self.db.model.builds.insert(),
                                      dict(number=new_number, builderid=builderid,
                                           buildrequestid=buildrequestid,
-                                          buildslaveid=buildslaveid, masterid=masterid,
+                                          workerid=workerid, masterid=masterid,
                                           started_at=started_at, complete_at=None,
                                           state_string=state_string))
                 except (sa.exc.IntegrityError, sa.exc.ProgrammingError):
@@ -205,7 +204,7 @@ class BuildsConnectorComponent(base.DBConnectorComponent):
             number=row.number,
             builderid=row.builderid,
             buildrequestid=row.buildrequestid,
-            buildslaveid=row.buildslaveid,
+            workerid=row.workerid,
             masterid=row.masterid,
             started_at=mkdt(row.started_at),
             complete_at=mkdt(row.complete_at),

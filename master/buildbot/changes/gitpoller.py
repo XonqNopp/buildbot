@@ -13,13 +13,13 @@
 #
 # Copyright Buildbot Team Members
 
-from future.moves.urllib.parse import quote as urlquote
-from future.utils import itervalues, iterkeys
-
 import itertools
 import os
 import re
 
+from future.moves.urllib.parse import quote as urlquote
+from future.utils import iterkeys
+from future.utils import itervalues
 from twisted.internet import defer
 from twisted.internet import utils
 from twisted.python import log
@@ -81,7 +81,8 @@ class GitPoller(base.PollingChangeSource, StateMixin):
         self.gitbin = gitbin
         self.workdir = workdir
         self.usetimestamps = usetimestamps
-        self.category = category if callable(category) else ascii2unicode(category)
+        self.category = category if callable(
+            category) else ascii2unicode(category)
         self.project = ascii2unicode(project)
         self.changeCount = 0
         self.lastRev = {}
@@ -216,7 +217,8 @@ class GitPoller(base.PollingChangeSource, StateMixin):
                 try:
                     stamp = int(git_output)
                 except Exception as e:
-                    log.msg('gitpoller: caught exception converting output \'%s\' to timestamp' % git_output)
+                    log.msg(
+                        'gitpoller: caught exception converting output \'%s\' to timestamp' % git_output)
                     raise e
                 return stamp
             else:
@@ -236,7 +238,8 @@ class GitPoller(base.PollingChangeSource, StateMixin):
 
         @d.addCallback
         def process(git_output):
-            fileList = [decode_file(file) for file in itertools.ifilter(lambda s: len(s), git_output.splitlines())]
+            fileList = [decode_file(file) for file in itertools.ifilter(
+                lambda s: len(s), git_output.splitlines())]
             return fileList
         return d
 

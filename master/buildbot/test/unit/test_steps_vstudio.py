@@ -12,6 +12,8 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+from mock import Mock
+from twisted.trial import unittest
 
 from buildbot.process.properties import Property
 from buildbot.process.results import FAILURE
@@ -20,9 +22,7 @@ from buildbot.process.results import WARNINGS
 from buildbot.steps import vstudio
 from buildbot.test.fake.remotecommand import ExpectShell
 from buildbot.test.util import steps
-from twisted.trial import unittest
 
-from mock import Mock
 
 real_log = r"""
 1>------ Build started: Project: lib1, Configuration: debug Win32 ------
@@ -160,9 +160,12 @@ class MSLogLineObserver(unittest.TestCase):
         lines = real_log.split("\n")
         self.receiveLines(*lines)
         errors = [
-            ('o', '1>------ Build started: Project: lib1, Configuration: debug Win32 ------'),
-            ('o', '2>------ Build started: Project: product, Configuration: debug Win32 ------'),
-            ('e', '2>LINK : fatal error LNK1168: cannot open ../../debug/directory/dllname.dll for writing')
+            ('o',
+             '1>------ Build started: Project: lib1, Configuration: debug Win32 ------'),
+            ('o',
+             '2>------ Build started: Project: product, Configuration: debug Win32 ------'),
+            ('e',
+             '2>LINK : fatal error LNK1168: cannot open ../../debug/directory/dllname.dll for writing')
         ]
         warnings = [
             '1>------ Build started: Project: lib1, Configuration: debug Win32 ------',
@@ -786,14 +789,13 @@ class TestMsBuild(steps.BuildStepMixin, unittest.TestCase):
         return self.tearDownBuildStep()
 
     def test_build_project(self):
-        self.setupStep(vstudio.MsBuild(projectfile='pf', config='cfg', platform='Win32', project='pj'))
+        self.setupStep(vstudio.MsBuild(
+            projectfile='pf', config='cfg', platform='Win32', project='pj'))
 
         self.expectCommands(
             ExpectShell(workdir='wkdir', usePTY='slave-config',
-                        command=['%VCENV_BAT%', 'x86', '&&',
-                                 'msbuild', 'pf', '/p:Configuration=cfg', '/p:Platform=Win32',
-                                 '/t:pj'],
-                        env={'VCENV_BAT': '"${VS110COMNTOOLS}..\\..\\VC\\vcvarsall.bat"'})
+                        command='"%VCENV_BAT%" x86 && msbuild "pf" /p:Configuration="cfg" /p:Platform="Win32" /t:"pj"',
+                        env={'VCENV_BAT': r'${VS110COMNTOOLS}..\..\VC\vcvarsall.bat'})
             + 0
         )
         self.expectOutcome(result=SUCCESS,
@@ -801,14 +803,13 @@ class TestMsBuild(steps.BuildStepMixin, unittest.TestCase):
         return self.runStep()
 
     def test_build_solution(self):
-        self.setupStep(vstudio.MsBuild(projectfile='pf', config='cfg', platform='x64'))
+        self.setupStep(
+            vstudio.MsBuild(projectfile='pf', config='cfg', platform='x64'))
 
         self.expectCommands(
             ExpectShell(workdir='wkdir', usePTY='slave-config',
-                        command=['%VCENV_BAT%', 'x86', '&&',
-                                 'msbuild', 'pf', '/p:Configuration=cfg', '/p:Platform=x64',
-                                 '/t:Rebuild'],
-                        env={'VCENV_BAT': '"${VS110COMNTOOLS}..\\..\\VC\\vcvarsall.bat"'})
+                        command='"%VCENV_BAT%" x86 && msbuild "pf" /p:Configuration="cfg" /p:Platform="x64" /t:Rebuild',
+                        env={'VCENV_BAT': r'${VS110COMNTOOLS}..\..\VC\vcvarsall.bat'})
             + 0
         )
         self.expectOutcome(result=SUCCESS,

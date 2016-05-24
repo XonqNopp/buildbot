@@ -17,14 +17,15 @@ import os
 import string
 import textwrap
 
+from twisted.python import runtime
+from twisted.python import usage
+from twisted.trial import unittest
+
 from buildbot import config as config_module
 from buildbot.scripts import base
 from buildbot.test.util import dirs
 from buildbot.test.util import misc
 from buildbot.test.util.decorators import skipUnlessPlatformIs
-from twisted.python import runtime
-from twisted.python import usage
-from twisted.trial import unittest
 
 
 class TestIBD(dirs.DirsMixin, misc.StdoutAssertionsMixin, unittest.TestCase):
@@ -129,7 +130,8 @@ class TestTacFallback(dirs.DirsMixin, unittest.TestCase):
             configfile = sibpath(__file__, "relative.cfg")
             """))
         foundConfigFile = base.getConfigFileFromTac(basedir=self.basedir)
-        self.assertEqual(foundConfigFile, os.path.join(self.basedir, "relative.cfg"))
+        self.assertEqual(
+            foundConfigFile, os.path.join(self.basedir, "relative.cfg"))
 
 
 class TestSubcommandOptions(unittest.TestCase):
@@ -334,27 +336,27 @@ class TestLoadConfig(dirs.DirsMixin, misc.StdoutAssertionsMixin,
 
     def test_loadConfig(self):
         @classmethod
-        def loadConfig(cls, basedir, filename):
+        def loadConfig(cls):
             return config_module.MasterConfig()
-        self.patch(config_module.MasterConfig, 'loadConfig', loadConfig)
+        self.patch(config_module.FileLoader, 'loadConfig', loadConfig)
         cfg = base.loadConfig(mkconfig())
         self.assertIsInstance(cfg, config_module.MasterConfig)
         self.assertInStdout('checking')
 
     def test_loadConfig_ConfigErrors(self):
         @classmethod
-        def loadConfig(cls, basedir, filename):
+        def loadConfig(cls):
             raise config_module.ConfigErrors(['oh noes'])
-        self.patch(config_module.MasterConfig, 'loadConfig', loadConfig)
+        self.patch(config_module.FileLoader, 'loadConfig', loadConfig)
         cfg = base.loadConfig(mkconfig())
         self.assertIdentical(cfg, None)
         self.assertInStdout('oh noes')
 
     def test_loadConfig_exception(self):
         @classmethod
-        def loadConfig(cls, basedir, filename):
+        def loadConfig(cls):
             raise RuntimeError()
-        self.patch(config_module.MasterConfig, 'loadConfig', loadConfig)
+        self.patch(config_module.FileLoader, 'loadConfig', loadConfig)
         cfg = base.loadConfig(mkconfig())
         self.assertIdentical(cfg, None)
         self.assertInStdout('RuntimeError')

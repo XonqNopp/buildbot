@@ -33,10 +33,13 @@ twisted/plugins/dropin.cache
 coverage-html
 apidocs/reference
 apidocs/reference.tgz
-common/googlecode_upload.py
 master/docs/tutorial/_build
 _build
-.tox
+# tox
+.tox/
+# downloaded by setup_requires eggs
+*.egg
+.eggs/
 master/setuptools_trial*
 master/buildbot/www/static/js/default/
 sandbox

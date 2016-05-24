@@ -12,17 +12,21 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+import os
 
 import mock
-import os
+from twisted.internet import defer
+from twisted.trial import unittest
 
 from buildbot import config
 from buildbot.db import connector
 from buildbot.db import exceptions
 from buildbot.test.fake import fakemaster
 from buildbot.test.util import db
-from twisted.internet import defer
-from twisted.trial import unittest
+from buildbot.test.util.warnings import assertNotProducesWarnings
+from buildbot.test.util.warnings import assertProducesWarning
+from buildbot.worker_transition import DeprecatedWorkerAPIWarning
+from buildbot.worker_transition import DeprecatedWorkerNameWarning
 
 
 class DBConnector(db.RealDatabaseMixin, unittest.TestCase):
@@ -37,7 +41,7 @@ class DBConnector(db.RealDatabaseMixin, unittest.TestCase):
             'changes', 'change_properties', 'change_files', 'patches',
             'sourcestamps', 'buildset_properties', 'buildsets',
             'sourcestampsets', 'builds', 'builders', 'masters',
-            'buildrequests'])
+            'buildrequests', 'workers'])
 
         self.master = fakemaster.make_master()
         self.master.config = config.MasterConfig()
@@ -59,12 +63,11 @@ class DBConnector(db.RealDatabaseMixin, unittest.TestCase):
         yield self.db.reconfigServiceWithBuildbotConfig(self.master.config)
 
     # tests
+    @defer.inlineCallbacks
     def test_doCleanup_service(self):
-        d = self.startService()
+        yield self.startService()
 
-        @d.addCallback
-        def check(_):
-            self.assertTrue(self.db.cleanup_timer.running)
+        self.assertTrue(self.db.cleanup_timer.running)
 
     def test_doCleanup_unconfigured(self):
         self.db.changes.pruneChanges = mock.Mock(
@@ -90,3 +93,17 @@ class DBConnector(db.RealDatabaseMixin, unittest.TestCase):
     def test_setup_check_version_good(self):
         self.db.model.is_current = lambda: defer.succeed(True)
         return self.startService(check_version=True)
+
+    @defer.inlineCallbacks
+    def test_workersrc_old_api(self):
+        yield self.startService()
+
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            new = self.db.workers
+
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="'buildslaves' attribute is deprecated"):
+            old = self.db.buildslaves
+
+        self.assertIdentical(new, old)

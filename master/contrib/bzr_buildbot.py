@@ -104,9 +104,13 @@ except ImportError:
 else:
     DEFINE_POLLER = True
 
-import bzrlib.branch
-import bzrlib.errors
-import bzrlib.trace
+
+# Work around Twisted bug.
+# See http://twistedmatrix.com/trac/ticket/3591
+import operator
+#
+import socket
+
 import twisted.cred.credentials
 import twisted.internet.base
 import twisted.internet.reactor
@@ -115,8 +119,12 @@ import twisted.internet.task
 import twisted.internet.threads
 import twisted.python.log
 import twisted.spread.pb
-
 from twisted.internet import defer
+from twisted.python import failure
+
+import bzrlib.branch
+import bzrlib.errors
+import bzrlib.trace
 
 
 #
@@ -196,7 +204,7 @@ if DEFINE_POLLER:
     class BzrPoller(buildbot.changes.base.PollingChangeSource,
                     buildbot.util.ComparableMixin):
 
-        compare_attrs = ['url']
+        compare_attrs = ('url')
 
         def __init__(self, url, poll_interval=10 * 60, blame_merge_author=False,
                      branch_name=None, category=None):
@@ -330,13 +338,6 @@ def _installed_hook(branch):
                     HOOK_KEY, PUSH_VALUE, COMMIT_VALUE, CHANGE_VALUE))
     return value
 
-#
-# Work around Twisted bug.
-# See http://twistedmatrix.com/trac/ticket/3591
-import operator
-import socket
-
-from twisted.python import failure
 
 # replaces twisted.internet.thread equivalent
 

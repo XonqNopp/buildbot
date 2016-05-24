@@ -1,5 +1,5 @@
 class forceDialog extends Controller
-    constructor: ($scope, $state, modal, schedulerid, $rootScope, builderid, dataService) ->
+    constructor: ($scope, config, $state, modal, schedulerid, $rootScope, builderid, dataService) ->
         dataService.getForceschedulers(schedulerid, subscribe: false).onChange = (schedulers) ->
             scheduler = schedulers[0]
             # prepare default values
@@ -9,6 +9,14 @@ class forceDialog extends Controller
                         prepareFields(field.fields)
                     else
                         field.value = field.default
+                        # if field type is username, then we just hide the field
+                        # the backend will fill the value automatically
+                        if field.type == 'username'
+                            field.type = "text"
+                            user = config.user
+                            if user.email?
+                                field.type = "text"
+                                field.hide = true
             prepareFields(scheduler.all_fields)
             angular.extend $scope,
                 rootfield:
@@ -24,6 +32,7 @@ class forceDialog extends Controller
                     gatherFields = (fields) ->
                         for field in fields
                             field.errors = ''
+                            field.haserrors = false
                             if field.fields?
                                 gatherFields(field.fields)
                             else
@@ -35,10 +44,11 @@ class forceDialog extends Controller
                     .then (res) ->
                         modal.modal.close(res.result)
                     ,   (err) ->
-                        if err.data.error.code == -32602
-                            for k, v of err.data.error.message
+                        if err.error.code == -32602
+                            for k, v of err.error.message
                                 fields_ref[k].errors = v
+                                fields_ref[k].haserrors = true
                         else
-                            $scope.error = err.data.error.message
+                            $scope.error = err.error.message
                 cancel: ->
                     modal.modal.dismiss()

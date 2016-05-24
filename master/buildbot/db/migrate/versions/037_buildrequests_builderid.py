@@ -14,11 +14,11 @@
 # Copyright Buildbot Team Members
 
 import hashlib
+
 import sqlalchemy as sa
+from migrate import changeset
 
 from buildbot.util import sautils
-
-from migrate import changeset
 
 
 def add_new_schema_parts(migrate_engine):
@@ -29,7 +29,8 @@ def add_new_schema_parts(migrate_engine):
 
     buildrequests = sautils.Table('buildrequests', metadata, autoload=True)
 
-    builderid = sa.Column('builderid', sa.Integer, sa.ForeignKey('builders.id'))
+    builderid = sa.Column(
+        'builderid', sa.Integer, sa.ForeignKey('builders.id'))
     builderid.create(buildrequests)
 
     # Remove all index
@@ -94,7 +95,8 @@ def remove_buildername(migrate_engine):
     buildrequests.c.buildername.drop()
 
     changeset.alter_column(
-        sa.Column('builderid', sa.Integer, sa.ForeignKey("builders.id"), nullable=False),
+        sa.Column('builderid', sa.Integer, sa.ForeignKey(
+            "builders.id"), nullable=False),
         table=buildrequests,
         metadata=metadata,
         engine=migrate_engine)

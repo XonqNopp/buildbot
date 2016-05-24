@@ -12,17 +12,16 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-from future.utils import iteritems
-
 import os
 import shutil
 import stat
 import tarfile
 import tempfile
+from cStringIO import StringIO
 
-from twisted.trial import unittest
-
+from future.utils import iteritems
 from mock import Mock
+from twisted.trial import unittest
 
 from buildbot import config
 from buildbot.process import remotetransfer
@@ -35,9 +34,11 @@ from buildbot.steps import transfer
 from buildbot.test.fake.remotecommand import Expect
 from buildbot.test.fake.remotecommand import ExpectRemoteRef
 from buildbot.test.util import steps
+from buildbot.test.util.warnings import assertNotProducesWarnings
+from buildbot.test.util.warnings import assertProducesWarning
 from buildbot.util import json
-
-from cStringIO import StringIO
+from buildbot.worker_transition import DeprecatedWorkerAPIWarning
+from buildbot.worker_transition import DeprecatedWorkerNameWarning
 
 
 def uploadString(string, timestamp=None):
@@ -103,11 +104,11 @@ class TestFileUpload(steps.BuildStepMixin, unittest.TestCase):
 
     def testConstructorModeType(self):
         self.assertRaises(config.ConfigErrors, lambda:
-                          transfer.FileUpload(slavesrc=__file__, masterdest='xyz', mode='g+rwx'))
+                          transfer.FileUpload(workersrc=__file__, masterdest='xyz', mode='g+rwx'))
 
     def testBasic(self):
         self.setupStep(
-            transfer.FileUpload(slavesrc='srcfile', masterdest=self.destfile))
+            transfer.FileUpload(workersrc='srcfile', masterdest=self.destfile))
 
         self.expectCommands(
             Expect('uploadFile', dict(
@@ -124,7 +125,7 @@ class TestFileUpload(steps.BuildStepMixin, unittest.TestCase):
 
     def testTimestamp(self):
         self.setupStep(
-            transfer.FileUpload(slavesrc=__file__, masterdest=self.destfile, keepstamp=True))
+            transfer.FileUpload(workersrc=__file__, masterdest=self.destfile, keepstamp=True))
 
         timestamp = (os.path.getatime(__file__),
                      os.path.getmtime(__file__))
@@ -157,7 +158,7 @@ class TestFileUpload(steps.BuildStepMixin, unittest.TestCase):
 
     def testURL(self):
         self.setupStep(
-            transfer.FileUpload(slavesrc=__file__, masterdest=self.destfile, url="http://server/file"))
+            transfer.FileUpload(workersrc=__file__, masterdest=self.destfile, url="http://server/file"))
 
         self.step.addURL = Mock()
 
@@ -183,7 +184,7 @@ class TestFileUpload(steps.BuildStepMixin, unittest.TestCase):
 
     def testFailure(self):
         self.setupStep(
-            transfer.FileUpload(slavesrc='srcfile', masterdest=self.destfile))
+            transfer.FileUpload(workersrc='srcfile', masterdest=self.destfile))
 
         self.expectCommands(
             Expect('uploadFile', dict(
@@ -200,7 +201,7 @@ class TestFileUpload(steps.BuildStepMixin, unittest.TestCase):
 
     def testException(self):
         self.setupStep(
-            transfer.FileUpload(slavesrc='srcfile', masterdest=self.destfile))
+            transfer.FileUpload(workersrc='srcfile', masterdest=self.destfile))
 
         behavior = UploadError(uploadString("Hello world!"))
 
@@ -223,6 +224,45 @@ class TestFileUpload(steps.BuildStepMixin, unittest.TestCase):
 
         return d
 
+    def test_workersrc_old_api(self):
+        step = transfer.FileUpload(workersrc='srcfile', masterdest='dstfile')
+
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            new = step.workersrc
+
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="'slavesrc' attribute is deprecated"):
+            old = step.slavesrc
+
+        self.assertIdentical(new, old)
+
+    def test_init_workersrc_new_api_no_warns(self):
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            step = transfer.FileUpload(
+                workersrc='srcfile', masterdest='dstfile')
+
+        self.assertEqual(step.workersrc, 'srcfile')
+
+    def test_init_workersrc_old_api_warns(self):
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="'slavesrc' keyword argument is deprecated"):
+            step = transfer.FileUpload(
+                slavesrc='srcfile', masterdest='dstfile')
+
+        self.assertEqual(step.workersrc, 'srcfile')
+
+    def test_init_workersrc_positional(self):
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            step = transfer.FileUpload('srcfile', 'dstfile')
+
+        self.assertEqual(step.workersrc, 'srcfile')
+
+    def test_init_positional_args(self):
+        self.assertRaises(TypeError, lambda: transfer.FileUpload())
+        self.assertRaises(TypeError, lambda: transfer.FileUpload('src'))
+
 
 class TestDirectoryUpload(steps.BuildStepMixin, unittest.TestCase):
 
@@ -241,7 +281,7 @@ class TestDirectoryUpload(steps.BuildStepMixin, unittest.TestCase):
 
     def testBasic(self):
         self.setupStep(
-            transfer.DirectoryUpload(slavesrc="srcdir", masterdest=self.destdir))
+            transfer.DirectoryUpload(workersrc="srcdir", masterdest=self.destdir))
 
         self.expectCommands(
             Expect('uploadDirectory', dict(
@@ -258,7 +298,7 @@ class TestDirectoryUpload(steps.BuildStepMixin, unittest.TestCase):
 
     def testFailure(self):
         self.setupStep(
-            transfer.DirectoryUpload(slavesrc="srcdir", masterdest=self.destdir))
+            transfer.DirectoryUpload(workersrc="srcdir", masterdest=self.destdir))
 
         self.expectCommands(
             Expect('uploadDirectory', dict(
@@ -274,7 +314,7 @@ class TestDirectoryUpload(steps.BuildStepMixin, unittest.TestCase):
 
     def testException(self):
         self.setupStep(
-            transfer.DirectoryUpload(slavesrc='srcdir', masterdest=self.destdir))
+            transfer.DirectoryUpload(workersrc='srcdir', masterdest=self.destdir))
 
         behavior = UploadError(uploadTarFile('fake.tar', test="Hello world!"))
 
@@ -298,6 +338,46 @@ class TestDirectoryUpload(steps.BuildStepMixin, unittest.TestCase):
 
         return d
 
+    def test_workersrc_old_api(self):
+        step = transfer.DirectoryUpload(
+            workersrc='srcfile', masterdest='dstfile')
+
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            new = step.workersrc
+
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="'slavesrc' attribute is deprecated"):
+            old = step.slavesrc
+
+        self.assertIdentical(new, old)
+
+    def test_init_workersrc_new_api_no_warns(self):
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            step = transfer.DirectoryUpload(
+                workersrc='srcfile', masterdest='dstfile')
+
+        self.assertEqual(step.workersrc, 'srcfile')
+
+    def test_init_workersrc_old_api_warns(self):
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="'slavesrc' keyword argument is deprecated"):
+            step = transfer.DirectoryUpload(
+                slavesrc='srcfile', masterdest='dstfile')
+
+        self.assertEqual(step.workersrc, 'srcfile')
+
+    def test_init_workersrc_positional(self):
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            step = transfer.DirectoryUpload('srcfile', 'dstfile')
+
+        self.assertEqual(step.workersrc, 'srcfile')
+
+    def test_init_positional_args(self):
+        self.assertRaises(TypeError, lambda: transfer.DirectoryUpload())
+        self.assertRaises(TypeError, lambda: transfer.DirectoryUpload('src'))
+
 
 class TestMultipleFileUpload(steps.BuildStepMixin, unittest.TestCase):
 
@@ -316,7 +396,7 @@ class TestMultipleFileUpload(steps.BuildStepMixin, unittest.TestCase):
 
     def testEmpty(self):
         self.setupStep(
-            transfer.MultipleFileUpload(slavesrcs=[], masterdest=self.destdir))
+            transfer.MultipleFileUpload(workersrcs=[], masterdest=self.destdir))
 
         self.expectCommands()
 
@@ -326,7 +406,7 @@ class TestMultipleFileUpload(steps.BuildStepMixin, unittest.TestCase):
 
     def testFile(self):
         self.setupStep(
-            transfer.MultipleFileUpload(slavesrcs=["srcfile"], masterdest=self.destdir))
+            transfer.MultipleFileUpload(workersrcs=["srcfile"], masterdest=self.destdir))
 
         self.expectCommands(
             Expect('stat', dict(file="srcfile",
@@ -346,7 +426,7 @@ class TestMultipleFileUpload(steps.BuildStepMixin, unittest.TestCase):
 
     def testDirectory(self):
         self.setupStep(
-            transfer.MultipleFileUpload(slavesrcs=["srcdir"], masterdest=self.destdir))
+            transfer.MultipleFileUpload(workersrcs=["srcdir"], masterdest=self.destdir))
 
         self.expectCommands(
             Expect('stat', dict(file="srcdir",
@@ -366,7 +446,7 @@ class TestMultipleFileUpload(steps.BuildStepMixin, unittest.TestCase):
 
     def testMultiple(self):
         self.setupStep(
-            transfer.MultipleFileUpload(slavesrcs=["srcfile", "srcdir"], masterdest=self.destdir))
+            transfer.MultipleFileUpload(workersrcs=["srcfile", "srcdir"], masterdest=self.destdir))
 
         self.expectCommands(
             Expect('stat', dict(file="srcfile",
@@ -397,7 +477,7 @@ class TestMultipleFileUpload(steps.BuildStepMixin, unittest.TestCase):
 
     def testFailure(self):
         self.setupStep(
-            transfer.MultipleFileUpload(slavesrcs=["srcfile", "srcdir"], masterdest=self.destdir))
+            transfer.MultipleFileUpload(workersrcs=["srcfile", "srcdir"], masterdest=self.destdir))
 
         self.expectCommands(
             Expect('stat', dict(file="srcfile",
@@ -417,7 +497,7 @@ class TestMultipleFileUpload(steps.BuildStepMixin, unittest.TestCase):
 
     def testException(self):
         self.setupStep(
-            transfer.MultipleFileUpload(slavesrcs=["srcfile", "srcdir"], masterdest=self.destdir))
+            transfer.MultipleFileUpload(workersrcs=["srcfile", "srcdir"], masterdest=self.destdir))
 
         behavior = UploadError(uploadString("Hello world!"))
 
@@ -450,7 +530,7 @@ class TestMultipleFileUpload(steps.BuildStepMixin, unittest.TestCase):
             allUploadsDone = Mock(return_value=None)
 
         step = CustomStep(
-            slavesrcs=["srcfile", "srcdir"], masterdest=self.destdir)
+            workersrcs=["srcfile", "srcdir"], masterdest=self.destdir)
         self.setupStep(step)
 
         self.expectCommands(
@@ -494,6 +574,95 @@ class TestMultipleFileUpload(steps.BuildStepMixin, unittest.TestCase):
 
         return d
 
+    def test_workersrcs_old_api(self):
+        step = transfer.MultipleFileUpload(
+            workersrcs=['srcfile'], masterdest='dstfile')
+
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            new = step.workersrcs
+
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="'slavesrcs' attribute is deprecated"):
+            old = step.slavesrcs
+
+        self.assertIdentical(new, old)
+
+    def test_init_workersrcs_new_api_no_warns(self):
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            step = transfer.MultipleFileUpload(
+                workersrcs=['srcfile'], masterdest='dstfile')
+
+        self.assertEqual(step.workersrcs, ['srcfile'])
+
+    def test_init_workersrcs_old_api_warns(self):
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="'slavesrcs' keyword argument is deprecated"):
+            step = transfer.MultipleFileUpload(
+                slavesrcs=['srcfile'], masterdest='dstfile')
+
+        self.assertEqual(step.workersrcs, ['srcfile'])
+
+    def test_init_workersrcs_positional(self):
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            step = transfer.MultipleFileUpload(['srcfile'], 'dstfile')
+
+        self.assertEqual(step.workersrcs, ['srcfile'])
+
+    def test_init_positional_args(self):
+        self.assertRaises(TypeError, lambda: transfer.MultipleFileUpload())
+        self.assertRaises(
+            TypeError, lambda: transfer.MultipleFileUpload(['srcfile']))
+
+
+class TestFileDownload(steps.BuildStepMixin, unittest.TestCase):
+
+    def setUp(self):
+        return self.setUpBuildStep()
+
+    def tearDown(self):
+        return self.tearDownBuildStep()
+
+    def test_workerdest_old_api(self):
+        step = transfer.FileDownload(mastersrc='srcfile', workerdest='dstfile')
+
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            new = step.workerdest
+
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="'slavedest' attribute is deprecated"):
+            old = step.slavedest
+
+        self.assertIdentical(new, old)
+
+    def test_init_workerdest_new_api_no_warns(self):
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            step = transfer.FileDownload(
+                mastersrc='srcfile', workerdest='dstfile')
+
+        self.assertEqual(step.workerdest, 'dstfile')
+
+    def test_init_workerdest_old_api_warns(self):
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="'slavedest' keyword argument is deprecated"):
+            step = transfer.FileDownload(
+                mastersrc='srcfile', slavedest='dstfile')
+
+        self.assertEqual(step.workerdest, 'dstfile')
+
+    def test_init_workerdest_positional(self):
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            step = transfer.FileDownload('srcfile', 'dstfile')
+
+        self.assertEqual(step.workerdest, 'dstfile')
+
+    def test_init_positional_args(self):
+        self.assertRaises(TypeError, lambda: transfer.FileDownload())
+        self.assertRaises(TypeError, lambda: transfer.FileDownload('srcfile'))
+
 
 class TestStringDownload(steps.BuildStepMixin, unittest.TestCase):
 
@@ -516,7 +685,7 @@ class TestStringDownload(steps.BuildStepMixin, unittest.TestCase):
     def testBasic(self):
         self.setupStep(transfer.StringDownload("Hello World", "hello.txt"))
 
-        self.step.buildslave = Mock()
+        self.step.worker = Mock()
         self.step.remote = Mock()
 
         # A place to store what gets read
@@ -530,7 +699,8 @@ class TestStringDownload(steps.BuildStepMixin, unittest.TestCase):
             + Expect.behavior(downloadString(read.append))
             + 0)
 
-        self.expectOutcome(result=SUCCESS, state_string="downloading to hello.txt")
+        self.expectOutcome(
+            result=SUCCESS, state_string="downloading to hello.txt")
         d = self.runStep()
 
         @d.addCallback
@@ -548,11 +718,51 @@ class TestStringDownload(steps.BuildStepMixin, unittest.TestCase):
                 reader=ExpectRemoteRef(remotetransfer.StringFileReader)))
             + 1)
 
-        self.expectOutcome(result=FAILURE, state_string="downloading to hello.txt (failure)")
+        self.expectOutcome(
+            result=FAILURE, state_string="downloading to hello.txt (failure)")
         return self.runStep()
+
+    def test_workerdest_old_api(self):
+        step = transfer.StringDownload('srcfile', workerdest='dstfile')
+
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            new = step.workerdest
+
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="'slavedest' attribute is deprecated"):
+            old = step.slavedest
+
+        self.assertIdentical(new, old)
+
+    def test_init_workerdest_new_api_no_warns(self):
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            step = transfer.StringDownload('srcfile', workerdest='dstfile')
+
+        self.assertEqual(step.workerdest, 'dstfile')
+
+    def test_init_workerdest_old_api_warns(self):
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="'slavedest' keyword argument is deprecated"):
+            step = transfer.StringDownload('srcfile', slavedest='dstfile')
+
+        self.assertEqual(step.workerdest, 'dstfile')
+
+    def test_init_workerdest_positional(self):
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            step = transfer.StringDownload('srcfile', 'dstfile')
+
+        self.assertEqual(step.workerdest, 'dstfile')
+
+    def test_init_positional_args(self):
+        self.assertRaises(TypeError, lambda: transfer.StringDownload())
+        self.assertRaises(
+            TypeError, lambda: transfer.StringDownload('srcfile'))
 
 
 class TestJSONStringDownload(steps.BuildStepMixin, unittest.TestCase):
+
     def setUp(self):
         return self.setUpBuildStep()
 
@@ -563,7 +773,7 @@ class TestJSONStringDownload(steps.BuildStepMixin, unittest.TestCase):
         msg = dict(message="Hello World")
         self.setupStep(transfer.JSONStringDownload(msg, "hello.json"))
 
-        self.step.buildslave = Mock()
+        self.step.worker = Mock()
         self.step.remote = Mock()
 
         # A place to store what gets read
@@ -578,7 +788,8 @@ class TestJSONStringDownload(steps.BuildStepMixin, unittest.TestCase):
             + Expect.behavior(downloadString(read.append))
             + 0)
 
-        self.expectOutcome(result=SUCCESS, state_string="downloading to hello.json")
+        self.expectOutcome(
+            result=SUCCESS, state_string="downloading to hello.json")
         d = self.runStep()
 
         @d.addCallback
@@ -597,8 +808,47 @@ class TestJSONStringDownload(steps.BuildStepMixin, unittest.TestCase):
                 reader=ExpectRemoteRef(remotetransfer.StringFileReader)))
             + 1)
 
-        self.expectOutcome(result=FAILURE, state_string="downloading to hello.json (failure)")
+        self.expectOutcome(
+            result=FAILURE, state_string="downloading to hello.json (failure)")
         return self.runStep()
+
+    def test_workerdest_old_api(self):
+        step = transfer.JSONStringDownload('srcfile', workerdest='dstfile')
+
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            new = step.workerdest
+
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="'slavedest' attribute is deprecated"):
+            old = step.slavedest
+
+        self.assertIdentical(new, old)
+
+    def test_init_workerdest_new_api_no_warns(self):
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            step = transfer.JSONStringDownload('srcfile', workerdest='dstfile')
+
+        self.assertEqual(step.workerdest, 'dstfile')
+
+    def test_init_workerdest_old_api_warns(self):
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="'slavedest' keyword argument is deprecated"):
+            step = transfer.JSONStringDownload('srcfile', slavedest='dstfile')
+
+        self.assertEqual(step.workerdest, 'dstfile')
+
+    def test_init_workerdest_positional(self):
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            step = transfer.JSONStringDownload('srcfile', 'dstfile')
+
+        self.assertEqual(step.workerdest, 'dstfile')
+
+    def test_init_positional_args(self):
+        self.assertRaises(TypeError, lambda: transfer.JSONStringDownload())
+        self.assertRaises(
+            TypeError, lambda: transfer.JSONStringDownload('srcfile'))
 
 
 class TestJSONPropertiesDownload(unittest.TestCase):
@@ -609,12 +859,12 @@ class TestJSONPropertiesDownload(unittest.TestCase):
         props = Properties()
         props.setProperty('key1', 'value1', 'test')
         s.build.getProperties.return_value = props
-        s.build.getSlaveCommandVersion.return_value = 1
+        s.build.getWorkerCommandVersion.return_value = 1
         ss = Mock()
         ss.asDict.return_value = dict(revision="12345")
-        s.build.getSourceStamp.return_value = ss
+        s.build.getAllSourceStamps.return_value = [ss]
 
-        s.buildslave = Mock()
+        s.worker = Mock()
         s.remote = Mock()
 
         s.start()
@@ -628,7 +878,43 @@ class TestJSONPropertiesDownload(unittest.TestCase):
                 reader = kwargs['reader']
                 data = reader.remote_read(100)
                 self.assertEquals(
-                    data, json.dumps(dict(sourcestamp=ss.asDict(), properties={'key1': 'value1'})))
+                    data, json.dumps(dict(sourcestamps=[ss.asDict()], properties={'key1': 'value1'})))
                 break
         else:
-            self.assert_(False, "No downloadFile command found")
+            raise ValueError("No downloadFile command found")
+
+    def test_workerdest_old_api(self):
+        step = transfer.JSONPropertiesDownload(workerdest='dstfile')
+
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            new = step.workerdest
+
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="'slavedest' attribute is deprecated"):
+            old = step.slavedest
+
+        self.assertIdentical(new, old)
+
+    def test_init_workerdest_new_api_no_warns(self):
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            step = transfer.JSONPropertiesDownload(workerdest='dstfile')
+
+        self.assertEqual(step.workerdest, 'dstfile')
+
+    def test_init_workerdest_old_api_warns(self):
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="'slavedest' keyword argument is deprecated"):
+            step = transfer.JSONPropertiesDownload(slavedest='dstfile')
+
+        self.assertEqual(step.workerdest, 'dstfile')
+
+    def test_init_workerdest_positional(self):
+        with assertNotProducesWarnings(DeprecatedWorkerAPIWarning):
+            step = transfer.JSONPropertiesDownload('dstfile')
+
+        self.assertEqual(step.workerdest, 'dstfile')
+
+    def test_init_positional_args(self):
+        self.assertRaises(TypeError, lambda: transfer.JSONPropertiesDownload())

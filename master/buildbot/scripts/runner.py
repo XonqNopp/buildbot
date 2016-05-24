@@ -20,12 +20,14 @@
 # pages and texinfo documentation.
 from __future__ import print_function
 
-import sqlalchemy as sa
 import sys
+import textwrap
 
-from buildbot.scripts import base
+import sqlalchemy as sa
 from twisted.python import reflect
 from twisted.python import usage
+
+from buildbot.scripts import base
 
 
 # Note that the terms 'options' and 'config' are used interchangeably here - in
@@ -64,7 +66,7 @@ class UpgradeMasterOptions(base.BasedirMixin, base.SubcommandOptions):
     def getSynopsis(self):
         return "Usage:    buildbot upgrade-master [options] [<basedir>]"
 
-    longdesc = """
+    longdesc = textwrap.dedent("""
     This command takes an existing buildmaster working directory and
     adds/modifies the files there to work with the current version of
     buildbot. When this command is finished, the buildmaster directory should
@@ -87,7 +89,7 @@ class UpgradeMasterOptions(base.BasedirMixin, base.SubcommandOptions):
     When upgrading the database, this command uses the database specified in
     the master configuration file.  If you wish to use a database other than
     the default (sqlite), be sure to set that parameter before upgrading.
-    """
+    """)
 
 
 class CreateMasterOptions(base.BasedirMixin, base.SubcommandOptions):
@@ -116,10 +118,11 @@ class CreateMasterOptions(base.BasedirMixin, base.SubcommandOptions):
     def getSynopsis(self):
         return "Usage:    buildbot create-master [options] [<basedir>]"
 
-    longdesc = """
+    longdesc = textwrap.dedent("""
     This command creates a buildmaster working directory and buildbot.tac file.
-    The master will live in <dir> and create various files there.  If
-    --relocatable is given, then the resulting buildbot.tac file will be
+    The master will live in <basedir> (defaults to the current directory)
+    and create various files there.
+    If --relocatable is given, then the resulting buildbot.tac file will be
     written such that its containing directory is assumed to be the basedir.
     This is generally a good idea.
 
@@ -143,7 +146,7 @@ class CreateMasterOptions(base.BasedirMixin, base.SubcommandOptions):
     The --db string is stored verbatim in the buildbot.tac file, and
     evaluated at 'buildbot start' time to pass a DBConnector instance into
     the newly-created BuildMaster object.
-    """
+    """)
 
     def postOptions(self):
         base.BasedirMixin.postOptions(self)
@@ -172,6 +175,7 @@ class StopOptions(base.BasedirMixin, base.SubcommandOptions):
     optFlags = [
         ["quiet", "q", "Do not emit the commands being run"],
         ["clean", "c", "Clean shutdown master"],
+        ["no-wait", None, "Don't wait for complete master shutdown"],
     ]
 
     def getSynopsis(self):
@@ -529,10 +533,10 @@ class UserOptions(base.SubcommandOptions):
     ]
     requiredOptions = ['master']
 
-    longdesc = """
+    longdesc = textwrap.dedent("""
     Currently implemented types for --info= are:\n
     git, svn, hg, cvs, darcs, bzr, email
-    """
+    """)
 
     def __init__(self):
         base.SubcommandOptions.__init__(self)
@@ -636,7 +640,8 @@ class DataSpecOption(base.BasedirMixin, base.SubcommandOptions):
     subcommandFunction = "buildbot.scripts.dataspec.dataspec"
     optParameters = [
         ['out', 'o', "dataspec.json", "output to specified path"],
-        ['global', 'g', None, "output a js script, that sets a global, for inclusion in testsuite"],
+        ['global', 'g', None,
+            "output a js script, that sets a global, for inclusion in testsuite"],
     ]
 
     def getSynopsis(self):
@@ -650,7 +655,8 @@ class ProcessWWWIndexOption(base.BasedirMixin, base.SubcommandOptions):
 
     subcommandFunction = "buildbot.scripts.processwwwindex.processwwwindex"
     optParameters = [
-        ['index-file', 'i', None, "Path to the index.html file to be processed"],
+        ['index-file', 'i', None,
+            "Path to the index.html file to be processed"],
     ]
 
 
@@ -667,7 +673,7 @@ class CleanupDBOptions(base.BasedirMixin, base.SubcommandOptions):
     def getSynopsis(self):
         return "Usage:    buildbot cleanupdb [options] [<basedir>]"
 
-    longdesc = """
+    longdesc = textwrap.dedent("""
     This command takes an existing buildmaster working directory and
     do some optimization on the database.
 
@@ -679,7 +685,7 @@ class CleanupDBOptions(base.BasedirMixin, base.SubcommandOptions):
     This command uses the database specified in
     the master configuration file.  If you wish to use a database other than
     the default (sqlite), be sure to set that parameter before upgrading.
-    """
+    """)
 
 
 class Options(usage.Options):

@@ -12,8 +12,13 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+from copy import deepcopy
 
 import mock
+from twisted.internet import defer
+from twisted.python import components
+from twisted.trial import unittest
+from zope.interface import implements
 
 from buildbot.interfaces import IProperties
 from buildbot.interfaces import IRenderable
@@ -31,10 +36,8 @@ from buildbot.process.properties import renderer
 from buildbot.test.fake.fakebuild import FakeBuild
 from buildbot.test.util.config import ConfigErrorsMixin
 from buildbot.test.util.properties import ConstantRenderable
-from twisted.internet import defer
-from twisted.python import components
-from twisted.trial import unittest
-from zope.interface import implements
+from buildbot.test.util.warnings import assertProducesWarning
+from buildbot.worker_transition import DeprecatedWorkerNameWarning
 
 
 class FakeSource:
@@ -206,8 +209,8 @@ class TestPropertyMap(unittest.TestCase):
         return d
 
     def testTempValue(self):
-        self.doTestSimpleWithProperties('%(prop_temp)s', 'present',
-                                        prop_temp=lambda b: 'present')
+        return self.doTestSimpleWithProperties('%(prop_temp)s', 'present',
+                                               prop_temp=lambda b: 'present')
 
     def testTempValueOverrides(self):
         return self.doTestSimpleWithProperties('%(prop_one)s', 2,
@@ -340,17 +343,17 @@ class TestInterpolatePositional(unittest.TestCase):
         self.props = Properties()
         self.build = FakeBuild(props=self.props)
 
+    @defer.inlineCallbacks
     def test_string(self):
         command = Interpolate("test %s", "one fish")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "test one fish")
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "test one fish")
 
+    @defer.inlineCallbacks
     def test_twoString(self):
         command = Interpolate("test %s, %s", "one fish", "two fish")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "test one fish, two fish")
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "test one fish, two fish")
 
     def test_deferred(self):
         renderable = DeferredRenderable()
@@ -361,13 +364,12 @@ class TestInterpolatePositional(unittest.TestCase):
         renderable.callback("red fish")
         return d
 
+    @defer.inlineCallbacks
     def test_renderable(self):
         self.props.setProperty("buildername", "blue fish", "test")
         command = Interpolate("echo '%s'", Property("buildername"))
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo 'blue fish'")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo 'blue fish'")
 
 
 class TestInterpolateProperties(unittest.TestCase):
@@ -376,144 +378,140 @@ class TestInterpolateProperties(unittest.TestCase):
         self.props = Properties()
         self.build = FakeBuild(props=self.props)
 
+    @defer.inlineCallbacks
     def test_properties(self):
         self.props.setProperty("buildername", "winbld", "test")
         command = Interpolate("echo buildby-%(prop:buildername)s")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo buildby-winbld")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo buildby-winbld")
 
+    @defer.inlineCallbacks
     def test_properties_newline(self):
         self.props.setProperty("buildername", "winbld", "test")
         command = Interpolate("aa\n%(prop:buildername)s\nbb")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "aa\nwinbld\nbb")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "aa\nwinbld\nbb")
 
+    @defer.inlineCallbacks
     def test_property_not_set(self):
         command = Interpolate("echo buildby-%(prop:buildername)s")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo buildby-")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo buildby-")
 
+    @defer.inlineCallbacks
     def test_property_colon_minus(self):
         command = Interpolate("echo buildby-%(prop:buildername:-blddef)s")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo buildby-blddef")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo buildby-blddef")
 
+    @defer.inlineCallbacks
+    def test_deepcopy(self):
+        # After a deepcopy, Interpolate instances used to lose track
+        # that they didn't have a ``hasKey`` value
+        # see http://trac.buildbot.net/ticket/3505
+        self.props.setProperty("buildername", "linux4", "test")
+        command = deepcopy(
+            Interpolate("echo buildby-%(prop:buildername:-blddef)s"))
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo buildby-linux4")
+
+    @defer.inlineCallbacks
     def test_property_colon_tilde_true(self):
         self.props.setProperty("buildername", "winbld", "test")
         command = Interpolate("echo buildby-%(prop:buildername:~blddef)s")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo buildby-winbld")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo buildby-winbld")
 
+    @defer.inlineCallbacks
     def test_property_colon_tilde_false(self):
         self.props.setProperty("buildername", "", "test")
         command = Interpolate("echo buildby-%(prop:buildername:~blddef)s")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo buildby-blddef")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo buildby-blddef")
 
+    @defer.inlineCallbacks
     def test_property_colon_plus(self):
         self.props.setProperty("project", "proj1", "test")
         command = Interpolate("echo %(prop:project:+projectdefined)s")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo projectdefined")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo projectdefined")
 
+    @defer.inlineCallbacks
     def test_nested_property(self):
         self.props.setProperty("project", "so long!", "test")
         command = Interpolate("echo '%(prop:missing:~%(prop:project)s)s'")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo 'so long!'")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo 'so long!'")
 
+    @defer.inlineCallbacks
     def test_property_substitute_recursively(self):
         self.props.setProperty("project", "proj1", "test")
         command = Interpolate("echo '%(prop:no_such:-%(prop:project)s)s'")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo 'proj1'")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo 'proj1'")
 
+    @defer.inlineCallbacks
     def test_property_colon_ternary_present(self):
         self.props.setProperty("project", "proj1", "test")
         command = Interpolate("echo %(prop:project:?:defined:missing)s")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo defined")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo defined")
 
+    @defer.inlineCallbacks
     def test_property_colon_ternary_missing(self):
         command = Interpolate("echo %(prop:project:?|defined|missing)s")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo missing")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo missing")
 
+    @defer.inlineCallbacks
     def test_property_colon_ternary_hash_true(self):
         self.props.setProperty("project", "winbld", "test")
         command = Interpolate("echo buildby-%(prop:project:#?:T:F)s")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo buildby-T")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo buildby-T")
 
+    @defer.inlineCallbacks
     def test_property_colon_ternary_hash_false(self):
         self.props.setProperty("project", "", "test")
         command = Interpolate("echo buildby-%(prop:project:#?|T|F)s")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo buildby-F")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo buildby-F")
 
+    @defer.inlineCallbacks
     def test_property_colon_ternary_substitute_recursively_true(self):
         self.props.setProperty("P", "present", "test")
         self.props.setProperty("one", "proj1", "test")
         self.props.setProperty("two", "proj2", "test")
         command = Interpolate("echo '%(prop:P:?|%(prop:one)s|%(prop:two)s)s'")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo 'proj1'")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo 'proj1'")
 
+    @defer.inlineCallbacks
     def test_property_colon_ternary_substitute_recursively_false(self):
         self.props.setProperty("one", "proj1", "test")
         self.props.setProperty("two", "proj2", "test")
         command = Interpolate("echo '%(prop:P:?|%(prop:one)s|%(prop:two)s)s'")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo 'proj2'")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo 'proj2'")
 
+    @defer.inlineCallbacks
     def test_property_colon_ternary_substitute_recursively_delimited_true(self):
         self.props.setProperty("P", "present", "test")
         self.props.setProperty("one", "proj1", "test")
         self.props.setProperty("two", "proj2", "test")
-        command = Interpolate("echo '%(prop:P:?|%(prop:one:?|true|false)s|%(prop:two:?|false|true)s)s'")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo 'true'")
-        return d
+        command = Interpolate(
+            "echo '%(prop:P:?|%(prop:one:?|true|false)s|%(prop:two:?|false|true)s)s'")
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo 'true'")
 
+    @defer.inlineCallbacks
     def test_property_colon_ternary_substitute_recursively_delimited_false(self):
         self.props.setProperty("one", "proj1", "test")
         self.props.setProperty("two", "proj2", "test")
-        command = Interpolate("echo '%(prop:P:?|%(prop:one:?|true|false)s|%(prop:two:?|false|true)s)s'")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo 'false'")
-        return d
+        command = Interpolate(
+            "echo '%(prop:P:?|%(prop:one:?|true|false)s|%(prop:two:?|false|true)s)s'")
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo 'false'")
 
 
 class TestInterpolateSrc(unittest.TestCase):
@@ -540,103 +538,93 @@ class TestInterpolateSrc(unittest.TestCase):
         sc.project = None
         self.build.sources['cbC'] = sc
 
+    @defer.inlineCallbacks
     def test_src(self):
         command = Interpolate("echo %(src:cbB:repository)s")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo cvs://B..")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo cvs://B..")
 
+    @defer.inlineCallbacks
     def test_src_src(self):
-        command = Interpolate("echo %(src:cbB:repository)s %(src:cbB:project)s")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo cvs://B.. Project")
-        return d
+        command = Interpolate(
+            "echo %(src:cbB:repository)s %(src:cbB:project)s")
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo cvs://B.. Project")
 
+    @defer.inlineCallbacks
     def test_src_attr_empty(self):
         command = Interpolate("echo %(src:cbC:project)s")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo ")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo ")
 
+    @defer.inlineCallbacks
     def test_src_attr_codebase_notfound(self):
         command = Interpolate("echo %(src:unknown_codebase:project)s")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo ")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo ")
 
+    @defer.inlineCallbacks
     def test_src_colon_plus_false(self):
         command = Interpolate("echo '%(src:cbD:project:+defaultrepo)s'")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo ''")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo ''")
 
+    @defer.inlineCallbacks
     def test_src_colon_plus_true(self):
         command = Interpolate("echo '%(src:cbB:project:+defaultrepo)s'")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo 'defaultrepo'")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo 'defaultrepo'")
 
+    @defer.inlineCallbacks
     def test_src_colon_minus(self):
         command = Interpolate("echo %(src:cbB:nonattr:-defaultrepo)s")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo defaultrepo")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo defaultrepo")
 
+    @defer.inlineCallbacks
     def test_src_colon_minus_false(self):
         command = Interpolate("echo '%(src:cbC:project:-noproject)s'")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo ''")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo ''")
 
+    @defer.inlineCallbacks
     def test_src_colon_minus_true(self):
         command = Interpolate("echo '%(src:cbB:project:-noproject)s'")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo 'Project'")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo 'Project'")
 
+    @defer.inlineCallbacks
     def test_src_colon_minus_codebase_notfound(self):
-        command = Interpolate("echo '%(src:unknown_codebase:project:-noproject)s'")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo 'noproject'")
-        return d
+        command = Interpolate(
+            "echo '%(src:unknown_codebase:project:-noproject)s'")
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo 'noproject'")
 
+    @defer.inlineCallbacks
     def test_src_colon_tilde_true(self):
         command = Interpolate("echo '%(src:cbB:project:~noproject)s'")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo 'Project'")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo 'Project'")
 
+    @defer.inlineCallbacks
     def test_src_colon_tilde_false(self):
         command = Interpolate("echo '%(src:cbC:project:~noproject)s'")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo 'noproject'")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo 'noproject'")
 
+    @defer.inlineCallbacks
     def test_src_colon_tilde_false_src_as_replacement(self):
-        command = Interpolate("echo '%(src:cbC:project:~%(src:cbA:project)s)s'")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo 'Project'")
-        return d
+        command = Interpolate(
+            "echo '%(src:cbC:project:~%(src:cbA:project)s)s'")
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo 'Project'")
 
+    @defer.inlineCallbacks
     def test_src_colon_tilde_codebase_notfound(self):
-        command = Interpolate("echo '%(src:unknown_codebase:project:~noproject)s'")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo 'noproject'")
-        return d
+        command = Interpolate(
+            "echo '%(src:unknown_codebase:project:~noproject)s'")
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo 'noproject'")
 
 
 class TestInterpolateKwargs(unittest.TestCase):
@@ -652,97 +640,93 @@ class TestInterpolateKwargs(unittest.TestCase):
         sa.branch = "default"
         self.build.sources['cbA'] = sa
 
+    @defer.inlineCallbacks
     def test_kwarg(self):
         command = Interpolate("echo %(kw:repository)s", repository="cvs://A..")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo cvs://A..")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo cvs://A..")
 
+    @defer.inlineCallbacks
     def test_kwarg_kwarg(self):
         command = Interpolate("echo %(kw:repository)s %(kw:branch)s",
                               repository="cvs://A..", branch="default")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo cvs://A.. default")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo cvs://A.. default")
 
+    @defer.inlineCallbacks
     def test_kwarg_not_mapped(self):
         command = Interpolate("echo %(kw:repository)s", project="projectA")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo ")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo ")
 
+    @defer.inlineCallbacks
     def test_kwarg_colon_minus_not_available(self):
         command = Interpolate("echo %(kw:repository)s", project="projectA")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo ")
-        return d
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo ")
 
+    @defer.inlineCallbacks
     def test_kwarg_colon_minus_not_available_default(self):
-        command = Interpolate("echo %(kw:repository:-cvs://A..)s", project="projectA")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo cvs://A..")
-        return d
+        command = Interpolate(
+            "echo %(kw:repository:-cvs://A..)s", project="projectA")
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo cvs://A..")
 
+    @defer.inlineCallbacks
     def test_kwarg_colon_minus_available(self):
-        command = Interpolate("echo %(kw:repository:-cvs://A..)s", repository="cvs://B..")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo cvs://B..")
-        return d
+        command = Interpolate(
+            "echo %(kw:repository:-cvs://A..)s", repository="cvs://B..")
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo cvs://B..")
 
+    @defer.inlineCallbacks
     def test_kwarg_colon_tilde_true(self):
-        command = Interpolate("echo %(kw:repository:~cvs://B..)s", repository="cvs://A..")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo cvs://A..")
-        return d
+        command = Interpolate(
+            "echo %(kw:repository:~cvs://B..)s", repository="cvs://A..")
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo cvs://A..")
 
+    @defer.inlineCallbacks
     def test_kwarg_colon_tilde_false(self):
-        command = Interpolate("echo %(kw:repository:~cvs://B..)s", repository="")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo cvs://B..")
-        return d
+        command = Interpolate(
+            "echo %(kw:repository:~cvs://B..)s", repository="")
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo cvs://B..")
 
+    @defer.inlineCallbacks
     def test_kwarg_colon_tilde_none(self):
-        command = Interpolate("echo %(kw:repository:~cvs://B..)s", repository=None)
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo cvs://B..")
-        return d
+        command = Interpolate(
+            "echo %(kw:repository:~cvs://B..)s", repository=None)
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo cvs://B..")
 
+    @defer.inlineCallbacks
     def test_kwarg_colon_plus_false(self):
-        command = Interpolate("echo %(kw:repository:+cvs://B..)s", project="project")
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo ")
-        return d
+        command = Interpolate(
+            "echo %(kw:repository:+cvs://B..)s", project="project")
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo ")
 
+    @defer.inlineCallbacks
     def test_kwarg_colon_plus_true(self):
-        command = Interpolate("echo %(kw:repository:+cvs://B..)s", repository=None)
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo cvs://B..")
-        return d
+        command = Interpolate(
+            "echo %(kw:repository:+cvs://B..)s", repository=None)
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo cvs://B..")
 
+    @defer.inlineCallbacks
     def test_kwargs_colon_minus_false_src_as_replacement(self):
-        command = Interpolate("echo '%(kw:text:-%(src:cbA:branch)s)s'", notext='ddd')
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo 'default'")
-        return d
+        command = Interpolate(
+            "echo '%(kw:text:-%(src:cbA:branch)s)s'", notext='ddd')
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo 'default'")
 
+    @defer.inlineCallbacks
     def test_kwargs_renderable(self):
-        command = Interpolate("echo '%(kw:test)s'", test=ConstantRenderable('testing'))
-        d = self.build.render(command)
-        d.addCallback(self.failUnlessEqual,
-                      "echo 'testing'")
-        return d
+        command = Interpolate(
+            "echo '%(kw:test)s'", test=ConstantRenderable('testing'))
+        rendered = yield self.build.render(command)
+        self.assertEqual(rendered, "echo 'testing'")
 
     def test_kwargs_deferred(self):
         renderable = DeferredRenderable()
@@ -751,7 +735,6 @@ class TestInterpolateKwargs(unittest.TestCase):
         d.addCallback(self.failUnlessEqual,
                       "echo 'testing'")
         renderable.callback('testing')
-        return d
 
     def test_kwarg_deferred(self):
         renderable = DeferredRenderable()
@@ -760,11 +743,11 @@ class TestInterpolateKwargs(unittest.TestCase):
         d.addCallback(self.failUnlessEqual,
                       "echo 'testing'")
         renderable.callback('testing')
-        return d
 
     def test_nested_kwarg_deferred(self):
         renderable = DeferredRenderable()
-        command = Interpolate("echo '%(kw:missing:~%(kw:fishy)s)s'", missing=renderable, fishy="so long!")
+        command = Interpolate(
+            "echo '%(kw:missing:~%(kw:fishy)s)s'", missing=renderable, fishy="so long!")
         d = self.build.render(command)
         d.addCallback(self.failUnlessEqual,
                       "echo 'so long!'")
@@ -803,7 +786,8 @@ class TestWithProperties(unittest.TestCase):
     def testDictColonMinus(self):
         # test dict-style substitution with WithProperties
         self.props.setProperty("prop1", "foo", "test")
-        command = WithProperties("build-%(prop1:-empty)s-%(prop2:-empty)s.tar.gz")
+        command = WithProperties(
+            "build-%(prop1:-empty)s-%(prop2:-empty)s.tar.gz")
         d = self.build.render(command)
         d.addCallback(self.failUnlessEqual,
                       "build-foo-empty.tar.gz")
@@ -812,7 +796,8 @@ class TestWithProperties(unittest.TestCase):
     def testDictColonPlus(self):
         # test dict-style substitution with WithProperties
         self.props.setProperty("prop1", "foo", "test")
-        command = WithProperties("build-%(prop1:+exists)s-%(prop2:+exists)s.tar.gz")
+        command = WithProperties(
+            "build-%(prop1:+exists)s-%(prop2:+exists)s.tar.gz")
         d = self.build.render(command)
         d.addCallback(self.failUnlessEqual,
                       "build-exists-.tar.gz")
@@ -878,12 +863,14 @@ class TestWithProperties(unittest.TestCase):
         return d
 
     def testLambdaCallable(self):
-        self.assertRaises(ValueError, lambda: WithProperties('%(foo)s', foo='bar'))
+        self.assertRaises(
+            ValueError, lambda: WithProperties('%(foo)s', foo='bar'))
 
     def testLambdaUseExisting(self):
         self.props.setProperty('x', 10, 'test')
         self.props.setProperty('y', 20, 'test')
-        command = WithProperties('%(z)s', z=lambda props: props.getProperty('x') + props.getProperty('y'))
+        command = WithProperties(
+            '%(z)s', z=lambda props: props.getProperty('x') + props.getProperty('y'))
         d = self.build.render(command)
         d.addCallback(self.failUnlessEqual, '30')
         return d
@@ -919,7 +906,7 @@ class TestProperties(unittest.TestCase):
         self.props.setProperty("do-tests", 1, "scheduler")
         self.props.setProperty("do-install", 2, "scheduler")
 
-        self.assert_('do-tests' in self.props)
+        self.assertTrue('do-tests' in self.props)
         self.failUnlessEqual(self.props['do-tests'], 1)
         self.failUnlessEqual(self.props['do-install'], 2)
         self.assertRaises(KeyError, lambda: self.props['do-nothing'])
@@ -997,8 +984,10 @@ class TestProperties(unittest.TestCase):
         self.failUnlessEqual(self.props.getPropertySource('x'), 'old')
 
     def test_setProperty_notJsonable(self):
-        self.assertRaises(TypeError, self.props.setProperty, "project", ConstantRenderable('testing'), "test")
-        self.assertRaises(TypeError, self.props.setProperty, "project", object, "test")
+        self.assertRaises(TypeError, self.props.setProperty,
+                          "project", ConstantRenderable('testing'), "test")
+        self.assertRaises(
+            TypeError, self.props.setProperty, "project", object, "test")
 
     # IProperties methods
 
@@ -1188,8 +1177,10 @@ class TestProperty(unittest.TestCase):
         self.props.setProperty("do-tests-None", None, "scheduler")
 
         value = [Property("do-tests-string", default="Hello!", defaultWhenFalse=False),
-                 Property("do-tests-int", default="Hello!", defaultWhenFalse=False),
-                 Property("do-tests-list", default="Hello!", defaultWhenFalse=False),
+                 Property(
+                     "do-tests-int", default="Hello!", defaultWhenFalse=False),
+                 Property(
+                     "do-tests-list", default="Hello!", defaultWhenFalse=False),
                  Property("do-tests-None", default="Hello!", defaultWhenFalse=False)]
 
         d = self.build.render(value)
@@ -1329,7 +1320,8 @@ class Renderer(unittest.TestCase):
 class Compare(unittest.TestCase):
 
     def test_WithProperties_lambda(self):
-        self.failIfEqual(WithProperties("%(key)s", key=lambda p: 'val'), WithProperties("%(key)s", key=lambda p: 'val'))
+        self.failIfEqual(WithProperties("%(key)s", key=lambda p: 'val'), WithProperties(
+            "%(key)s", key=lambda p: 'val'))
 
         def rend(p):
             return "val"
@@ -1514,3 +1506,62 @@ class TestTransform(unittest.TestCase, ConfigErrorsMixin):
         kwarg.callback('def')
 
         return d
+
+
+class TestDeprecatedProperties(unittest.TestCase):
+
+    def setUp(self):
+        self.props = Properties()
+        self.build = FakeBuild(props=self.props)
+
+    @defer.inlineCallbacks
+    def test_workername_property(self):
+        self.props.setProperty("slavename", "worker-1", "source")
+
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="Property 'slavename' is deprecated, "
+                                "use 'workername' instead."):
+            prop = Property("slavename")
+
+        result = yield self.build.render(prop)
+        self.assertEqual(result, "worker-1")
+
+    @defer.inlineCallbacks
+    def test_workername_interpolate(self):
+        self.props.setProperty("slavename", "worker-1", "source")
+
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="Property 'slavename' is deprecated, "
+                                "use 'workername' instead."):
+            command = Interpolate("worker=%(prop:slavename)s")
+        result = yield self.build.render(command)
+        self.assertEqual(result, "worker=worker-1")
+
+    @defer.inlineCallbacks
+    def test_workername_WithProperties_kwargs(self):
+        self.props.setProperty("slavename", "worker-1", "source")
+        self.props.setProperty("got_revision", "rev1", "source")
+
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="Property 'slavename' is deprecated, "
+                                "use 'workername' instead."):
+            value = WithProperties('worker=%(slavename)s rev=%(got_revision)s')
+        result = yield self.build.render(value)
+        self.assertEqual(result, "worker=worker-1 rev=rev1")
+
+    @defer.inlineCallbacks
+    def test_workername_WithProperties_args(self):
+        self.props.setProperty("slavename", "worker-1", "source")
+        self.props.setProperty("got_revision", "rev1", "source")
+
+        with assertProducesWarning(
+                DeprecatedWorkerNameWarning,
+                message_pattern="Property 'slavename' is deprecated, "
+                                "use 'workername' instead."):
+            value = WithProperties(
+                'worker=%s rev=%s', 'slavename', 'got_revision')
+        result = yield self.build.render(value)
+        self.assertEqual(result, "worker=worker-1 rev=rev1")

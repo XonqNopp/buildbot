@@ -161,7 +161,8 @@ class SVNExtractor(SourceStampExtractor):
             if m:
                 self.baserev = int(m.group(1))
                 return
-        output("Could not find 'Status against revision' in SVN output: %s" % res)
+        output(
+            "Could not find 'Status against revision' in SVN output: %s" % res)
         sys.exit(1)
 
     def getPatch(self, res):
@@ -215,14 +216,16 @@ class MercurialExtractor(SourceStampExtractor):
             output = yield self.dovc(["log", "--template", "{node}\\n", "-r",
                                       "max(::. - outgoing(%s))" % upstream])
         except RuntimeError:
-            # outgoing() will abort if no default-push/default path is configured
+            # outgoing() will abort if no default-push/default path is
+            # configured
             if upstream:
                 raise
             # fall back to current working directory parent
             output = yield self.dovc(["log", "--template", "{node}\\n", "-r", "p1()"])
         m = re.search(r'^(\w+)', output)
         if not m:
-            raise RuntimeError("Revision %r is not in the right format" % (output,))
+            raise RuntimeError(
+                "Revision %r is not in the right format" % (output,))
         self.baserev = m.group(0)
 
     def getPatch(self, res):
@@ -383,7 +386,8 @@ class GitExtractor(SourceStampExtractor):
         sys.exit(1)
 
     def getPatch(self, res):
-        d = self.dovc(["diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-textconv", "--no-ext-diff", self.baserev])
+        d = self.dovc(["diff", "--src-prefix=a/", "--dst-prefix=b/",
+                       "--no-textconv", "--no-ext-diff", self.baserev])
         d.addCallback(self.readPatch, self.patchlevel)
         return d
 

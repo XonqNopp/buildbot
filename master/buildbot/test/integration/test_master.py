@@ -13,67 +13,32 @@
 #
 # Copyright Buildbot Team Members
 
-import mock
-import os
-
-from buildbot import config
-from buildbot.master import BuildMaster
-from buildbot.test.util import dirs
-from buildbot.test.util import www
 from twisted.internet import defer
 from twisted.internet import reactor
-from twisted.trial import unittest
+from twisted.internet.task import deferLater
+
+from buildbot.changes.filter import ChangeFilter
+from buildbot.changes.pb import PBChangeSource
+from buildbot.config import BuilderConfig
+from buildbot.process.factory import BuildFactory
+from buildbot.schedulers.basic import AnyBranchScheduler
+from buildbot.schedulers.forcesched import ForceScheduler
+from buildbot.steps.shell import ShellCommand
+from buildbot.test.util import www
+from buildbot.test.util.integration import RunMasterBase
+from buildbot.worker import Worker
 
 
-class RunMaster(dirs.DirsMixin, www.RequiresWwwMixin, unittest.TestCase):
+class RunMaster(RunMasterBase, www.RequiresWwwMixin):
 
-    def setUp(self):
-        self.basedir = os.path.abspath('basdir')
-        self.setUpDirs(self.basedir)
-        self.configfile = os.path.join(self.basedir, 'master.cfg')
-        open(self.configfile, "w").write(
-            'from buildbot.test.integration.test_master \\\n'
-            'import BuildmasterConfig\n')
-
-    def tearDown(self):
-        return self.tearDownDirs()
+    proto = 'pb'
 
     @defer.inlineCallbacks
     def do_test_master(self):
-        # create the master and set its config
-        m = BuildMaster(self.basedir, self.configfile)
-        m.config = config.MasterConfig.loadConfig(
-            self.basedir, self.configfile)
-
-        # update the DB
-        yield m.db.setup(check_version=False)
-        yield m.db.model.upgrade()
-
-        # stub out m.db.setup since it was already called above
-        m.db.setup = lambda: None
-
-        # mock reactor.stop (which trial *really* doesn't
-        # like test code to call!)
-        mock_reactor = mock.Mock(spec=reactor)
-        mock_reactor.callWhenRunning = reactor.callWhenRunning
-
-        # start the service
-        yield m.startService(_reactor=mock_reactor)
-        self.failIf(mock_reactor.stop.called,
-                    "startService tried to stop the reactor; check logs")
+        yield self.setupConfig(BuildmasterConfig, startWorker=False)
 
         # hang out for a fraction of a second, to let startup processes run
-        d = defer.Deferred()
-        reactor.callLater(0.01, d.callback, None)
-        yield d
-
-        # stop the service
-        yield m.stopService()
-
-        # and shutdown the db threadpool, as is normally done at reactor stop
-        m.db.pool.shutdown()
-
-        # (trial will verify all reactor-based timers have been cleared, etc.)
+        yield deferLater(reactor, 0.01, lambda: None)
 
     # run this test twice, to make sure the first time shut everything down
     # correctly; if this second test fails, but the first succeeds, then
@@ -92,21 +57,14 @@ class RunMaster(dirs.DirsMixin, www.RequiresWwwMixin, unittest.TestCase):
 # will help to flush out any bugs that may otherwise be difficult to find.
 
 c = BuildmasterConfig = {}
-from buildbot.buildslave import BuildSlave
-from buildbot.changes.filter import ChangeFilter
-from buildbot.changes.pb import PBChangeSource
-from buildbot.config import BuilderConfig
-from buildbot.process.factory import BuildFactory
-from buildbot.schedulers.basic import AnyBranchScheduler
-from buildbot.schedulers.forcesched import ForceScheduler
-from buildbot.steps.shell import ShellCommand
-c['slaves'] = [BuildSlave("local1", "localpw")]
-c['slavePortnum'] = 0
+c['workers'] = [Worker("local1", "localpw")]
+c['protocols'] = {'pb': {'port': 'tcp:0'}}
 c['change_source'] = []
 c['change_source'] = PBChangeSource()
 c['schedulers'] = []
 c['schedulers'].append(AnyBranchScheduler(name="all",
-                                          change_filter=ChangeFilter(project_re='^testy/'),
+                                          change_filter=ChangeFilter(
+                                              project_re='^testy/'),
                                           treeStableTimer=1 * 60,
                                           builderNames=['testy', ]))
 c['schedulers'].append(ForceScheduler(
@@ -117,12 +75,9 @@ f1.addStep(ShellCommand(command='echo hi'))
 c['builders'] = []
 c['builders'].append(
     BuilderConfig(name="testy",
-                  slavenames=["local1"],
+                  workernames=["local1"],
                   factory=f1))
 c['status'] = []
 c['title'] = "test"
 c['titleURL'] = "test"
 c['buildbotURL'] = "http://localhost:8010/"
-c['db'] = {
-    'db_url': "sqlite:///state.sqlite"
-}

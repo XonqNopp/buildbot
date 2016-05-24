@@ -12,12 +12,11 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import sqlalchemy as sa
+from twisted.trial import unittest
 
 from buildbot.test.util import migration
 from buildbot.util import sautils
-from twisted.trial import unittest
 
 
 class Migration(migration.MigrateTestMixin, unittest.TestCase):
@@ -43,7 +42,8 @@ class Migration(migration.MigrateTestMixin, unittest.TestCase):
             metadata = sa.MetaData()
             metadata.bind = conn
 
-            build_properties = sautils.Table('build_properties', metadata, autoload=True)
+            build_properties = sautils.Table(
+                'build_properties', metadata, autoload=True)
 
             q = sa.select([build_properties.c.buildid,
                            build_properties.c.name,

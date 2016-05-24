@@ -15,13 +15,14 @@
 
 import inspect
 
+from twisted.internet import defer
+from twisted.python import reflect
+
 from buildbot.data import base
 from buildbot.data import exceptions
 from buildbot.data import resultspec
 from buildbot.util import pathmatch
 from buildbot.util import service
-from twisted.internet import defer
-from twisted.python import reflect
 
 
 class Updates(object):
@@ -40,7 +41,7 @@ class DataConnector(service.AsyncService):
         'buildbot.data.builders',
         'buildbot.data.builds',
         'buildbot.data.buildrequests',
-        'buildbot.data.buildslaves',
+        'buildbot.data.workers',
         'buildbot.data.steps',
         'buildbot.data.logs',
         'buildbot.data.logchunks',
@@ -107,7 +108,8 @@ class DataConnector(service.AsyncService):
         try:
             return self.matcher[path]
         except KeyError:
-            raise exceptions.InvalidPathError("Invalid path: " + "/".join([str(p) for p in path]))
+            raise exceptions.InvalidPathError(
+                "Invalid path: " + "/".join([str(p) for p in path]))
 
     def getResourceType(self, name):
         return getattr(self.rtypes, name)
@@ -128,7 +130,8 @@ class DataConnector(service.AsyncService):
         return endpoint.control(action, args, kwargs)
 
     def produceEvent(self, rtype, msg, event):
-        # warning, this is temporary api, until all code is migrated to data api
+        # warning, this is temporary api, until all code is migrated to data
+        # api
         rsrc = self.getResourceType(rtype)
         return rsrc.produceEvent(msg, event)
 

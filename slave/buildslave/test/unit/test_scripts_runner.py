@@ -13,15 +13,16 @@
 #
 # Copyright Buildbot Team Members
 
-import mock
 import os
 import sys
 
-from buildslave.scripts import runner
-from buildslave.test.util import misc
+import mock
 from twisted.python import log
 from twisted.python import usage
 from twisted.trial import unittest
+
+from buildslave.scripts import runner
+from buildslave.test.util import misc
 
 
 class OptionsMixin(object):
@@ -303,14 +304,14 @@ class TestCreateSlaveOptions(OptionsMixin, unittest.TestCase):
                          "incorrect master host and/or port")
 
 
-class TestOptions(misc.LoggingMixin, unittest.TestCase):
+class TestOptions(misc.StdoutAssertionsMixin, unittest.TestCase):
 
     """
     Test buildslave.scripts.runner.Options class.
     """
 
     def setUp(self):
-        self.setUpLogging()
+        self.setUpStdoutAssertions()
 
     def parse(self, *args):
         opts = runner.Options()
@@ -325,7 +326,7 @@ class TestOptions(misc.LoggingMixin, unittest.TestCase):
     def test_version(self):
         exception = self.assertRaises(SystemExit, self.parse, '--version')
         self.assertEqual(exception.code, 0, "unexpected exit code")
-        self.assertLogged('Buildslave version:')
+        self.assertInStdout('Buildslave version:')
 
     def test_verbose(self):
         self.patch(log, 'startLogging', mock.Mock())
@@ -337,14 +338,14 @@ class TestOptions(misc.LoggingMixin, unittest.TestCase):
 functionPlaceholder = None
 
 
-class TestRun(misc.LoggingMixin, unittest.TestCase):
+class TestRun(misc.StdoutAssertionsMixin, unittest.TestCase):
 
     """
     Test buildslave.scripts.runner.run()
     """
 
     def setUp(self):
-        self.setUpLogging()
+        self.setUpStdoutAssertions()
 
     class TestSubCommand(usage.Options):
         subcommandFunction = __name__ + ".functionPlaceholder"
@@ -400,9 +401,9 @@ class TestRun(misc.LoggingMixin, unittest.TestCase):
 
         exception = self.assertRaises(SystemExit, runner.run)
         self.assertEqual(exception.code, 1, "unexpected exit code")
-        self.assertLogged("command:  usage-error-message",
-                          "GeneralUsage",
-                          "unexpected error message on stdout")
+        self.assertStdoutEqual("command:  usage-error-message\n\n"
+                               "GeneralUsage\n",
+                               "unexpected error message on stdout")
 
     def test_run_bad_suboption(self):
         """
@@ -418,6 +419,6 @@ class TestRun(misc.LoggingMixin, unittest.TestCase):
         self.assertEqual(exception.code, 1, "unexpected exit code")
 
         # check that we get error message for a sub-option
-        self.assertLogged("command:  usage-error-message",
-                          "SubOptionUsage",
-                          "unexpected error message on stdout")
+        self.assertStdoutEqual("command:  usage-error-message\n\n"
+                               "SubOptionUsage\n",
+                               "unexpected error message on stdout")

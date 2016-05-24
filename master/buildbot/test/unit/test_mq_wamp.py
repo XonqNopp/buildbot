@@ -12,19 +12,19 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+import os
+import textwrap
 
 import mock
-import os
+from autobahn.wamp.types import EventDetails
+from autobahn.wamp.types import SubscribeOptions
+from twisted.internet import defer
+from twisted.trial import unittest
 
 from buildbot.mq import wamp
 from buildbot.test.fake import fakemaster
 from buildbot.util import json
 from buildbot.wamp import connector
-
-from autobahn.wamp.types import EventDetails
-from autobahn.wamp.types import SubscribeOptions
-from twisted.internet import defer
-from twisted.trial import unittest
 
 
 class ComparableSubscribeOptions(SubscribeOptions):
@@ -109,14 +109,17 @@ class WampMQ(unittest.TestCase):
         self.master.wamp.subscribe = mock.Mock()
         yield self.mq.startConsuming(None, ('a', 'b'))
         options = ComparableSubscribeOptions(details_arg='details')
-        self.master.wamp.subscribe.assert_called_with(mock.ANY, u'org.buildbot.mq.a.b', options=options)
+        self.master.wamp.subscribe.assert_called_with(
+            mock.ANY, u'org.buildbot.mq.a.b', options=options)
 
     @defer.inlineCallbacks
     def test_startConsuming_wildcard(self):
         self.master.wamp.subscribe = mock.Mock()
         yield self.mq.startConsuming(None, ('a', None))
-        options = ComparableSubscribeOptions(match=u"wildcard", details_arg='details')
-        self.master.wamp.subscribe.assert_called_with(mock.ANY, u'org.buildbot.mq.a.', options=options)
+        options = ComparableSubscribeOptions(
+            match=u"wildcard", details_arg='details')
+        self.master.wamp.subscribe.assert_called_with(
+            mock.ANY, u'org.buildbot.mq.a.', options=options)
 
     @defer.inlineCallbacks
     def test_forward_data(self):
@@ -124,7 +127,8 @@ class WampMQ(unittest.TestCase):
         yield self.mq.startConsuming(callback, ('a', 'b'))
         # _produce returns a deferred
         yield self.mq._produce(('a', 'b'), 'foo')
-        # calling produce should eventually call the callback with decoding of topic
+        # calling produce should eventually call the callback with decoding of
+        # topic
         callback.assert_called_with(('a', 'b'), 'foo')
         self.assertEqual(self.master.wamp.last_data, u'foo')
 
@@ -134,7 +138,8 @@ class WampMQ(unittest.TestCase):
         yield self.mq.startConsuming(callback, ('a', None))
         # _produce returns a deferred
         yield self.mq._produce(('a', 'b'), 'foo')
-        # calling produce should eventually call the callback with decoding of topic
+        # calling produce should eventually call the callback with decoding of
+        # topic
         callback.assert_called_with(('a', 'b'), 'foo')
         self.assertEqual(self.master.wamp.last_data, u'foo')
 
@@ -152,10 +157,9 @@ class WampMQReal(unittest.TestCase):
         Tests a little bit more painful to run, but which involve real communication with
         a wamp router
     """
-    HOW_TO_RUN = """ \
-        define WAMP_ROUTER_URL to a wamp router to run this test\
-        e.g: WAMP_ROUTER_URL=ws://localhost:8000/ws
-    """
+    HOW_TO_RUN = textwrap.dedent("""\
+        define WAMP_ROUTER_URL to a wamp router to run this test
+        e.g: WAMP_ROUTER_URL=ws://localhost:8000/ws""")
     # if connection is bad, this test can timeout easily
     # we reduce the timeout to help maintain the sanity of the developer
     timeout = 2
@@ -184,7 +188,8 @@ class WampMQReal(unittest.TestCase):
         yield self.mq.startConsuming(callback, ('a', 'b'))
         # _produce returns a deferred
         yield self.mq._produce(('a', 'b'), 'foo')
-        # calling produce should eventually call the callback with decoding of topic
+        # calling produce should eventually call the callback with decoding of
+        # topic
         yield d
         callback.assert_called_with(('a', 'b'), 'foo')
 
@@ -195,6 +200,7 @@ class WampMQReal(unittest.TestCase):
         yield self.mq.startConsuming(callback, ('a', None))
         # _produce returns a deferred
         yield self.mq._produce(('a', 'b'), 'foo')
-        # calling produce should eventually call the callback with decoding of topic
+        # calling produce should eventually call the callback with decoding of
+        # topic
         yield d
         callback.assert_called_with(('a', 'b'), 'foo')

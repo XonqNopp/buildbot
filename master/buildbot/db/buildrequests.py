@@ -14,14 +14,15 @@
 # Copyright Buildbot Team Members
 
 import itertools
+
 import sqlalchemy as sa
+from twisted.internet import reactor
+from twisted.python import log
 
 from buildbot.db import NULL
 from buildbot.db import base
 from buildbot.util import datetime2epoch
 from buildbot.util import epoch2datetime
-from twisted.internet import reactor
-from twisted.python import log
 
 
 class AlreadyClaimedError(Exception):
@@ -212,12 +213,7 @@ class BuildRequestsConnectorComponent(base.DBConnectorComponent):
 
             # we'll need to batch the brids into groups of 100, so that the
             # parameter lists supported by the DBAPI aren't exhausted
-            iterator = iter(brids)
-
-            while True:
-                batch = list(itertools.islice(iterator, 100))
-                if not batch:
-                    break  # success!
+            for batch in self.doBatch(brids, 100):
 
                 q = reqs_tbl.update()
                 q = q.where(reqs_tbl.c.id.in_(batch))

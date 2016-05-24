@@ -12,9 +12,10 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import re
 import textwrap
+
+from twisted.trial import unittest
 
 from buildbot import config
 from buildbot.process import properties
@@ -30,7 +31,6 @@ from buildbot.test.fake.remotecommand import ExpectRemoteRef
 from buildbot.test.fake.remotecommand import ExpectShell
 from buildbot.test.util import config as configmixin
 from buildbot.test.util import steps
-from twisted.trial import unittest
 
 
 class TestShellCommandExecution(steps.BuildStepMixin, unittest.TestCase, configmixin.ConfigErrorsMixin):
@@ -70,11 +70,6 @@ class TestShellCommandExecution(steps.BuildStepMixin, unittest.TestCase, configm
             "Invalid argument(s) passed to RemoteShellCommand: ",
             lambda: shell.ShellCommand(workdir='build', command="echo Hello World",
                                        wrongArg1=1, wrongArg2='two'))
-
-    def test_getLegacySummary_no_command(self):
-        step = shell.ShellCommand(workdir='build')
-        step.rendered = True
-        self.assertLegacySummary(step, None)
 
     def test_getLegacySummary_from_empty_command(self):
         # this is more of a regression test for a potential failure, really
@@ -256,7 +251,7 @@ class TestShellCommandExecution(steps.BuildStepMixin, unittest.TestCase, configm
     def test_run_env(self):
         self.setupStep(
             shell.ShellCommand(workdir='build', command="echo hello"),
-            slave_env=dict(DEF='HERE'))
+            worker_env=dict(DEF='HERE'))
         self.expectCommands(
             ExpectShell(workdir='build', command='echo hello',
                         usePTY="slave-config",
@@ -270,7 +265,7 @@ class TestShellCommandExecution(steps.BuildStepMixin, unittest.TestCase, configm
         self.setupStep(
             shell.ShellCommand(workdir='build', env={'ABC': '123'},
                                command="echo hello"),
-            slave_env=dict(ABC='XXX', DEF='HERE'))
+            worker_env=dict(ABC='XXX', DEF='HERE'))
         self.expectCommands(
             ExpectShell(workdir='build', command='echo hello',
                         usePTY="slave-config",
@@ -292,11 +287,11 @@ class TestShellCommandExecution(steps.BuildStepMixin, unittest.TestCase, configm
         self.expectOutcome(result=SUCCESS)
         return self.runStep()
 
-    def test_run_usePTY_old_slave(self):
+    def test_run_usePTY_old_worker(self):
         self.setupStep(
             shell.ShellCommand(workdir='build', command="echo hello",
                                usePTY=True),
-            slave_version=dict(shell='1.1'))
+            worker_version=dict(shell='1.1'))
         self.expectCommands(
             ExpectShell(workdir='build', command='echo hello')
             + 0
@@ -322,6 +317,12 @@ class TestShellCommandExecution(steps.BuildStepMixin, unittest.TestCase, configm
 
     def test_run_decodeRC_defaults_0_is_failure(self):
         return self.test_run_decodeRC(0, FAILURE, extra_text=" (failure)")
+
+    def test_missing_command_error(self):
+        # this checks that an exception is raised for invalid arguments
+        self.assertRaisesConfigError(
+            "ShellCommand's `command' argument is not specified",
+            lambda: shell.ShellCommand())
 
 
 class TreeSize(steps.BuildStepMixin, unittest.TestCase):
@@ -514,6 +515,22 @@ class SetPropertyFromCommand(steps.BuildStepMixin, unittest.TestCase):
                       self.assertEqual(len(self.flushLoggedErrors(RuntimeError)), 1))
         return d
 
+    def test_error_both_set(self):
+        """
+        If both ``extract_fn`` and ``property`` are defined,
+        ``SetPropertyFromCommand`` reports a config error.
+        """
+        self.assertRaises(config.ConfigErrors,
+                          shell.SetPropertyFromCommand, command=["echo", "value"], property="propname", extract_fn=lambda x: {"propname": "hello"})
+
+    def test_error_none_set(self):
+        """
+        If neither ``extract_fn`` and ``property`` are defined,
+        ``SetPropertyFromCommand`` reports a config error.
+        """
+        self.assertRaises(config.ConfigErrors,
+                          shell.SetPropertyFromCommand, command=["echo", "value"])
+
 
 class PerlModuleTest(steps.BuildStepMixin, unittest.TestCase):
 
@@ -649,7 +666,8 @@ class Configure(unittest.TestCase):
         self.assertEqual(step.command, ['./configure'])
 
 
-class WarningCountingShellCommand(steps.BuildStepMixin, unittest.TestCase):
+class WarningCountingShellCommand(steps.BuildStepMixin, unittest.TestCase,
+                                  configmixin.ConfigErrorsMixin):
 
     def setUp(self):
         return self.setUpBuildStep()
@@ -912,6 +930,13 @@ class WarningCountingShellCommand(steps.BuildStepMixin, unittest.TestCase):
             ('foo:123:text', '(.*):(.*):(.*)', 'foo', 123, 'text')
         self.assertEqual(we(step, line, re.match(pat, line)),
                          (exp_file, exp_lineNo, exp_text))
+
+    def test_missing_command_error(self):
+        # this checks that an exception is raised for invalid arguments
+        self.assertRaisesConfigError(
+            "WarningCountingShellCommand's `command' argument is not "
+            "specified",
+            lambda: shell.WarningCountingShellCommand())
 
 
 class Compile(steps.BuildStepMixin, unittest.TestCase):

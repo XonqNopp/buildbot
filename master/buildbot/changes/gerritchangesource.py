@@ -13,15 +13,15 @@
 #
 # Copyright Buildbot Team Members
 from future.utils import iteritems
+from twisted.internet import defer
+from twisted.internet import reactor
+from twisted.internet.protocol import ProcessProtocol
+from twisted.python import log
 
 from buildbot import util
 from buildbot.changes import base
 from buildbot.changes.filter import ChangeFilter
 from buildbot.util import json
-from twisted.internet import defer
-from twisted.internet import reactor
-from twisted.internet.protocol import ProcessProtocol
-from twisted.python import log
 
 
 class GerritChangeFilter(ChangeFilter):
@@ -85,7 +85,8 @@ class GerritChangeSource(base.ChangeSource):
                     handled_events=("patchset-created", "ref-updated"),
                     debug=False):
         if self.name is None:
-            self.name = u"GerritChangeSource:%s@%s:%d" % (username, gerritserver, gerritport)
+            self.name = u"GerritChangeSource:%s@%s:%d" % (
+                username, gerritserver, gerritport)
 
     def reconfigService(self,
                         gerritserver,

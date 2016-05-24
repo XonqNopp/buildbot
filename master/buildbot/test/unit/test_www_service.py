@@ -12,9 +12,13 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
+import os
 
 import mock
-import os
+from twisted.cred.checkers import InMemoryUsernamePasswordDatabaseDontUse
+from twisted.internet import defer
+from twisted.trial import unittest
+from twisted.web._auth.wrapper import HTTPAuthSessionWrapper
 
 from buildbot.test.fake import fakemaster
 from buildbot.test.util import www
@@ -23,10 +27,6 @@ from buildbot.www import change_hook
 from buildbot.www import resource
 from buildbot.www import rest
 from buildbot.www import service
-from twisted.cred.checkers import InMemoryUsernamePasswordDatabaseDontUse
-from twisted.internet import defer
-from twisted.trial import unittest
-from twisted.web._auth.wrapper import HTTPAuthSessionWrapper
 
 
 class NeedsReconfigResource(resource.Resource):
@@ -47,7 +47,8 @@ class Test(www.WwwTestMixin, unittest.TestCase):
 
     def makeConfig(self, **kwargs):
         pwd = os.getcwd()
-        w = dict(port=None, public_html=pwd, auth=auth.NoAuth(), logfileName='l')
+        w = dict(
+            port=None, public_html=pwd, auth=auth.NoAuth(), logfileName='l')
         w.update(kwargs)
         new_config = mock.Mock()
         new_config.www = w

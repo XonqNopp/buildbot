@@ -12,25 +12,41 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
-import mock
 import os
 import signal
+
+import mock
+from twisted.internet import defer
+from twisted.internet import reactor
+from twisted.python import log
+from twisted.trial import unittest
+from zope.interface import implementer
 
 from buildbot import config
 from buildbot import master
 from buildbot import monkeypatches
 from buildbot.changes.changes import Change
 from buildbot.db import exceptions
+from buildbot.interfaces import IConfigLoader
 from buildbot.test.fake import fakedata
 from buildbot.test.fake import fakedb
 from buildbot.test.fake import fakemq
 from buildbot.test.util import dirs
 from buildbot.test.util import logging
-from twisted.internet import defer
-from twisted.internet import reactor
-from twisted.python import log
-from twisted.trial import unittest
+
+
+@implementer(IConfigLoader)
+class FailingLoader(object):
+
+    def loadConfig(self):
+        config.error('oh noes')
+
+
+@implementer(IConfigLoader)
+class DefaultLoader(object):
+
+    def loadConfig(self):
+        return config.MasterConfig()
 
 
 class OldTriggeringMethods(unittest.TestCase):
@@ -117,6 +133,26 @@ class OldTriggeringMethods(unittest.TestCase):
             exp_data_kwargs=dict(author='me', files=['a'], comments='com'))
 
 
+class InitTests(unittest.SynchronousTestCase):
+
+    def test_configfile_configloader_conflict(self):
+        """
+        If both configfile and config_loader are specified, a configuration
+        error is raised.
+        """
+        self.assertRaises(
+            config.ConfigErrors,
+            master.BuildMaster,
+            ".", "master.cfg", reactor=reactor, config_loader=DefaultLoader())
+
+    def test_configfile_default(self):
+        """
+        If neither configfile nor config_loader are specified, The default config_loader is a `FileLoader` pointing at `"master.cfg"`.
+        """
+        m = master.BuildMaster(".", reactor=reactor)
+        self.assertEqual(m.config_loader, config.FileLoader(".", "master.cfg"))
+
+
 class StartupAndReconfig(dirs.DirsMixin, logging.LoggingMixin, unittest.TestCase):
 
     def setUp(self):
@@ -133,16 +169,18 @@ class StartupAndReconfig(dirs.DirsMixin, logging.LoggingMixin, unittest.TestCase
             # patch out a few other annoying things the master likes to do
             self.patch(monkeypatches, 'patch_all', lambda: None)
             self.patch(signal, 'signal', lambda sig, hdlr: None)
-            self.patch(master, 'Status', lambda master: mock.Mock())  # XXX temporary
-            self.patch(config.MasterConfig, 'loadConfig',
-                       classmethod(lambda cls, b, f: cls()))
+            # XXX temporary
+            self.patch(master, 'Status', lambda master: mock.Mock())
 
-            self.master = master.BuildMaster(self.basedir)
+            self.reactor = self.make_reactor()
+            self.master = master.BuildMaster(
+                self.basedir, reactor=self.reactor, config_loader=DefaultLoader())
             self.db = self.master.db = fakedb.FakeDBConnector(self)
             self.db.setServiceParent(self.master)
             self.mq = self.master.mq = fakemq.FakeMQConnector(self)
             self.mq.setServiceParent(self.master)
-            self.data = self.master.data = fakedata.FakeDataConnector(self.master, self)
+            self.data = self.master.data = fakedata.FakeDataConnector(
+                self.master, self)
             self.data.setServiceParent(self.master)
 
         return d
@@ -153,62 +191,54 @@ class StartupAndReconfig(dirs.DirsMixin, logging.LoggingMixin, unittest.TestCase
     def make_reactor(self):
         r = mock.Mock()
         r.callWhenRunning = reactor.callWhenRunning
+        r.getThreadPool = reactor.getThreadPool
+        r.callFromThread = reactor.callFromThread
         return r
-
-    def patch_loadConfig_fail(self):
-        @classmethod
-        def loadConfig(cls, b, f):
-            config.error('oh noes')
-        self.patch(config.MasterConfig, 'loadConfig', loadConfig)
 
     # tests
     def test_startup_bad_config(self):
-        reactor = self.make_reactor()
-        self.patch_loadConfig_fail()
+        self.master.config_loader = FailingLoader()
 
-        d = self.master.startService(_reactor=reactor)
+        d = self.master.startService()
 
         @d.addCallback
         def check(_):
-            reactor.stop.assert_called_with()
+            self.reactor.stop.assert_called_with()
             self.assertLogged("oh noes")
+            self.assertLogged("BuildMaster startup failed")
         return d
 
     def test_startup_db_not_ready(self):
-        reactor = self.make_reactor()
-
         def db_setup():
             log.msg("GOT HERE")
             raise exceptions.DatabaseNotReadyError()
         self.db.setup = db_setup
 
-        d = self.master.startService(_reactor=reactor)
+        d = self.master.startService()
 
         @d.addCallback
         def check(_):
-            reactor.stop.assert_called_with()
+            self.reactor.stop.assert_called_with()
             self.assertLogged("GOT HERE")
+            self.assertLogged("BuildMaster startup failed")
         return d
 
     def test_startup_error(self):
-        reactor = self.make_reactor()
-
         def db_setup():
             raise RuntimeError("oh noes")
         self.db.setup = db_setup
 
-        d = self.master.startService(_reactor=reactor)
+        d = self.master.startService()
 
         @d.addCallback
         def check(_):
-            reactor.stop.assert_called_with()
+            self.reactor.stop.assert_called_with()
             self.assertEqual(len(self.flushLoggedErrors(RuntimeError)), 1)
+            self.assertLogged("BuildMaster startup failed")
         return d
 
     def test_startup_ok(self):
-        reactor = self.make_reactor()
-
-        d = self.master.startService(_reactor=reactor)
+        d = self.master.startService()
 
         @d.addCallback
         def check_started(_):
@@ -217,7 +247,7 @@ class StartupAndReconfig(dirs.DirsMixin, logging.LoggingMixin, unittest.TestCase
 
         @d.addCallback
         def check(_):
-            self.failIf(reactor.stop.called)
+            self.failIf(self.reactor.stop.called)
             self.assertLogged("BuildMaster is running")
 
             # check started/stopped messages
@@ -226,29 +256,28 @@ class StartupAndReconfig(dirs.DirsMixin, logging.LoggingMixin, unittest.TestCase
 
     @defer.inlineCallbacks
     def test_reconfig(self):
-        reactor = self.make_reactor()
         self.master.reconfigServiceWithBuildbotConfig = mock.Mock(
             side_effect=lambda n: defer.succeed(None))
         self.master.masterHeartbeatService = mock.Mock()
-        yield self.master.startService(_reactor=reactor)
+        yield self.master.startService()
         yield self.master.reconfig()
         yield self.master.stopService()
-        self.master.reconfigServiceWithBuildbotConfig.assert_called_with(mock.ANY)
+        self.master.reconfigServiceWithBuildbotConfig.assert_called_with(
+            mock.ANY)
 
     @defer.inlineCallbacks
     def test_reconfig_bad_config(self):
-        reactor = self.make_reactor()
         self.master.reconfigService = mock.Mock(
             side_effect=lambda n: defer.succeed(None))
 
         self.master.masterHeartbeatService = mock.Mock()
-        yield self.master.startService(_reactor=reactor)
+        yield self.master.startService()
 
         # reset, since startService called reconfigService
         self.master.reconfigService.reset_mock()
 
         # reconfig, with a failure
-        self.patch_loadConfig_fail()
+        self.master.config_loader = FailingLoader()
         yield self.master.reconfig()
 
         self.master.stopService()

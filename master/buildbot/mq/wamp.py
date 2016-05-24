@@ -13,18 +13,18 @@
 #
 # Copyright Buildbot Team Members
 from __future__ import unicode_literals
+
+import json
+
 from autobahn.wamp.exception import TransportLost
 from autobahn.wamp.types import PublishOptions
 from autobahn.wamp.types import SubscribeOptions
-
 from twisted.internet import defer
+from twisted.python import log
 
 from buildbot.mq import base
 from buildbot.util import service
 from buildbot.util import toJson
-from twisted.python import log
-
-import json
 
 
 class WampMQ(service.ReconfigurableServiceMixin, base.MQBase):
@@ -35,7 +35,8 @@ class WampMQ(service.ReconfigurableServiceMixin, base.MQBase):
 
     def produce(self, routingKey, data):
         d = self._produce(routingKey, data)
-        d.addErrback(log.err, "Problem while producing message on topic " + repr(routingKey))
+        d.addErrback(
+            log.err, "Problem while producing message on topic " + repr(routingKey))
 
     @classmethod
     def messageTopic(cls, routingKey):

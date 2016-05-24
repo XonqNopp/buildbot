@@ -12,25 +12,26 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
-
 from future.moves.urllib.parse import urlsplit
 from future.moves.urllib.parse import urlunsplit
 
 import calendar
 import datetime
 import dateutil.tz
+import itertools
 import locale
 import re
 import string
+import textwrap
 import time
 
 from twisted.python import reflect
 
+from zope.interface import implements
+
 from buildbot.interfaces import IConfigured
 from buildbot.util.misc import deferredLocked
-
-from zope.interface import implements
+from ._notifier import Notifier
 
 
 def naturalSort(l):
@@ -103,7 +104,7 @@ def formatInterval(eta):
 
 class ComparableMixin(object):
     implements(IConfigured)
-    compare_attrs = []
+    compare_attrs = ()
 
     class _None:
         pass
@@ -373,9 +374,48 @@ def command_to_string(command):
     return rv
 
 
+def rewrap(text, width=None):
+    """
+    Rewrap text for output to the console.
+
+    Removes common indentation and rewraps paragraphs according to the console
+    width.
+
+    Line feeds between paragraphs preserved.
+    Formatting of paragraphs that starts with additional indentation
+    preserved.
+    """
+
+    if width is None:
+        width = 80
+
+    # Remove common indentation.
+    text = textwrap.dedent(text)
+
+    def needs_wrapping(line):
+        # Line always non-empty.
+        return not line[0].isspace()
+
+    # Split text by lines and group lines that comprise paragraphs.
+    wrapped_text = ""
+    for do_wrap, lines in itertools.groupby(text.splitlines(True),
+                                            key=needs_wrapping):
+        paragraph = ''.join(lines)
+
+        if do_wrap:
+            paragraph = textwrap.fill(paragraph, width)
+
+        wrapped_text += paragraph
+
+    return wrapped_text
+
+
 __all__ = [
     'naturalSort', 'now', 'formatInterval', 'ComparableMixin', 'json',
     'safeTranslate', 'none_or_str',
     'NotABranch', 'deferredLocked', 'UTC',
     'diffSets', 'makeList', 'in_reactor', 'string2boolean',
-    'check_functional_environment', 'human_readable_delta']
+    'check_functional_environment', 'human_readable_delta',
+    'rewrap',
+    'Notifier',
+]

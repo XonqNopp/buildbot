@@ -12,9 +12,11 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-from future.utils import iteritems
-
 import sqlalchemy as sa
+from future.utils import iteritems
+from twisted.internet import defer
+from twisted.internet import task
+from twisted.trial import unittest
 
 from buildbot.db import builds
 from buildbot.db import changes
@@ -25,9 +27,6 @@ from buildbot.test.util import connector_component
 from buildbot.test.util import interfaces
 from buildbot.test.util import validation
 from buildbot.util import epoch2datetime
-from twisted.internet import defer
-from twisted.internet import task
-from twisted.trial import unittest
 
 SOMETIME = 20398573
 OTHERTIME = 937239287
@@ -45,7 +44,7 @@ class Tests(interfaces.InterfaceTests):
                       repository='', codebase='', project='', sourcestampid=92),
 
         fakedb.ChangeFile(changeid=13, filename='master/README.txt'),
-        fakedb.ChangeFile(changeid=13, filename='slave/README.txt'),
+        fakedb.ChangeFile(changeid=13, filename='worker/README.txt'),
 
         fakedb.ChangeProperty(changeid=13, property_name='notest',
                               property_value='["no","Change"]'),
@@ -355,7 +354,7 @@ class Tests(interfaces.InterfaceTests):
             self.assertEqual(changeids, [13, 14])
             # double-check that they have .files, etc.
             self.assertEqual(sorted(changes[0]['files']),
-                             sorted(['master/README.txt', 'slave/README.txt']))
+                             sorted(['master/README.txt', 'worker/README.txt']))
             self.assertEqual(changes[0]['properties'],
                              {'notest': ('no', 'Change')})
         d.addCallback(check)
@@ -423,7 +422,7 @@ class RealTests(Tests):
         clock.advance(SOMETIME)
         d = self.db.changes.addChange(
             author=u'dustin',
-            files=[u'master/LICENSING.txt', u'slave/LICENSING.txt'],
+            files=[u'master/LICENSING.txt', u'worker/LICENSING.txt'],
             comments=u'fix spelling',
             revision=u'2d6caa52',
             when_timestamp=epoch2datetime(266738400),
@@ -466,7 +465,7 @@ class RealTests(Tests):
                 r = r.fetchall()
                 self.assertEqual(len(r), 2)
                 self.assertEqual(r[0].filename, 'master/LICENSING.txt')
-                self.assertEqual(r[1].filename, 'slave/LICENSING.txt')
+                self.assertEqual(r[1].filename, 'worker/LICENSING.txt')
             return self.db.pool.do(thd)
         d.addCallback(check_change_files)
 
@@ -655,7 +654,8 @@ class RealTests(Tests):
                                  'change_properties', 'changes'):
                     tbl = self.db.model.metadata.tables[tbl_name]
                     res = conn.execute(sa.select([tbl.c.changeid]))
-                    results[tbl_name] = sorted([row[0] for row in res.fetchall()])
+                    results[tbl_name] = sorted(
+                        [row[0] for row in res.fetchall()])
                 self.assertEqual(results, {
                     'scheduler_changes': [14],
                     'change_files': [14],
@@ -712,7 +712,7 @@ class RealTests(Tests):
     @defer.inlineCallbacks
     def test_getChangesForBuild(self):
         rows = [fakedb.Master(id=88, name="bar"),
-                fakedb.Buildslave(id=13, name='one'),
+                fakedb.Worker(id=13, name='one'),
                 fakedb.Builder(id=77, name='A')]
         lastID = {"changeid": 0,
                   "sourcestampid": 0,
@@ -739,7 +739,8 @@ class RealTests(Tests):
                                         revision=revision,
                                         sourcestampid=lastID["sourcestampid"],
                                         parent_changeids=parent_changeids,
-                                        when_timestamp=SOMETIME + lastID["changeid"],
+                                        when_timestamp=SOMETIME +
+                                        lastID["changeid"],
                                         branch=branch,
                                         category=category,
                                         project=project,
@@ -773,7 +774,7 @@ class RealTests(Tests):
                              masterid=88,
                              builderid=77,
                              state_string="test",
-                             buildslaveid=13,
+                             workerid=13,
                              started_at=SOMETIME + lastID["buildid"],
                              complete_at=SOMETIME + 2 * lastID["buildid"],
                              results=results)])
@@ -838,8 +839,9 @@ class TestRealDB(unittest.TestCase,
             table_names=['changes', 'change_files',
                          'change_properties', 'scheduler_changes', 'schedulers',
                          'sourcestampsets', 'sourcestamps', 'patches', 'change_users',
-                         'users', 'buildsets', 'buildslaves', 'builders', 'masters',
-                         'buildrequests', 'builds', 'buildset_sourcestamps'])
+                         'users', 'buildsets', 'workers', 'builders', 'masters',
+                         'buildrequests', 'builds', 'buildset_sourcestamps',
+                         'workers'])
 
         @d.addCallback
         def finish_setup(_):

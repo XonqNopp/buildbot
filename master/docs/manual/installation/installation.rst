@@ -6,9 +6,9 @@ Installing the code
 The Buildbot Packages
 ~~~~~~~~~~~~~~~~~~~~~
 
-Buildbot comes in several parts: ``buildbot`` (the buildmaster), ``buildbot-slave`` (the buildslave), ``buildbot-www``, and several web plugins such as ``buildbot-waterfall-view``.
+Buildbot comes in several parts: ``buildbot`` (the buildmaster), ``buildbot-slave`` (the worker), ``buildbot-www``, and several web plugins such as ``buildbot-waterfall-view``.
 
-The buildslave and buildmaster can be installed individually or together.
+The worker and buildmaster can be installed individually or together.
 The base web (``buildbot.www``) and web plugins are required to run a master with a web interface (the common configuration).
 
 Installation From PyPI
@@ -21,7 +21,7 @@ For the master:
 
     pip install buildbot
 
-and for the slave:
+and for the worker:
 
 .. code-block:: bash
 
@@ -29,6 +29,12 @@ and for the slave:
 
 When using ``pip`` to install instead of distribution specific package manangers, e.g. via `apt-get` or `ports`, it is simpler to choose exactly which version one wants to use.
 It may however be easier to install via distribution specific package mangers but note that they may provide an earlier version than what is available via ``pip``.
+
+If you plan to use TLS or SSL in master configuration (e.g. to fetch resources over HTTPS using ``twisted.web.client``), you need to install Buildbot with ``tls`` extras:
+
+.. code-block:: bash
+
+    pip install buildbot[tls]
 
 Installation From Tarballs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -77,6 +83,8 @@ Running Buildbot's Tests (optional)
 
 If you wish, you can run the buildbot unit test suite.
 First, ensure you have the `mock <http://pypi.python.org/pypi/mock>`_ Python module installed from PyPI.
+You must not be using a Python wheels packaged version of Buildbot or have specified the bdist_wheel command when building.
+The test suite is not included with the PyPi packaged version.
 This module is not required for ordinary Buildbot operation - only to run the tests.
 Note that this is not the same as the Fedora ``mock`` package!
 

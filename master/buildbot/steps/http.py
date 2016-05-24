@@ -13,23 +13,21 @@
 #
 # Copyright Buildbot Team Members
 from future.utils import iteritems
-
-
-from buildbot import config
-from buildbot.process.buildstep import BuildStep
-from buildbot.process.buildstep import FAILURE
-from buildbot.process.buildstep import SUCCESS
 from twisted.internet import defer
 from twisted.internet import reactor
+
+from buildbot import config
+from buildbot.process.buildstep import FAILURE
+from buildbot.process.buildstep import SUCCESS
+from buildbot.process.buildstep import BuildStep
 
 # use the 'requests' lib: http://python-requests.org
 try:
     import txrequests
-    assert txrequests
     import requests
-    assert requests
 except ImportError:
-    txrequests = requests = None
+    txrequests = None
+
 
 # This step uses a global Session object, which encapsulates a thread pool as
 # well as state such as cookies and authentication.  This state may pose
@@ -72,8 +70,9 @@ class HTTPStep(BuildStep):
     session = None
 
     def __init__(self, url, method, **kwargs):
-        if txrequests is None or requests is None:
-            config.error("Need to install txrequest to use this step:\n\n pip install txrequests")
+        if txrequests is None:
+            config.error(
+                "Need to install txrequest to use this step:\n\n pip install txrequests")
 
         if method not in ('POST', 'GET', 'PUT', 'DELETE', 'HEAD', 'OPTIONS'):
             config.error("Wrong method given: '%s' is not known" % method)
@@ -109,7 +108,8 @@ class HTTPStep(BuildStep):
 
         # known methods already tested in __init__
 
-        log.addHeader('Performing %s request to %s\n' % (self.method, self.url))
+        log.addHeader('Performing %s request to %s\n' %
+                      (self.method, self.url))
         if self.params:
             log.addHeader('Parameters:\n')
             for k, v in iteritems(requestkwargs.get("params", {})):
@@ -126,7 +126,8 @@ class HTTPStep(BuildStep):
         try:
             r = yield self.session.request(**requestkwargs)
         except requests.exceptions.ConnectionError as e:
-            log.addStderr('An exception occured while performing the request: %s' % e)
+            log.addStderr(
+                'An exception occured while performing the request: %s' % e)
             self.finished(FAILURE)
             return
 

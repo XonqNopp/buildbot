@@ -12,19 +12,17 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import calendar
-
-import buildbot.www.change_hook as change_hook
-
-from buildbot.test.fake.web import FakeRequest
-from buildbot.test.fake.web import fakeMasterForHooks
 
 from twisted.trial import unittest
 
+import buildbot.www.change_hook as change_hook
+from buildbot.test.fake.web import FakeRequest
+from buildbot.test.fake.web import fakeMasterForHooks
+
+
 # Sample Gitorious commit payload
 # source: http://gitorious.org/gitorious/pages/WebHooks
-
 gitJsonPayload = r"""
 {
   "after": "df5744f7bc8663b39717f87742dc94f52ccbf4dd",
@@ -66,7 +64,8 @@ class TestChangeHookConfiguredWithGitChange(unittest.TestCase):
 
     def setUp(self):
         dialects = {'gitorious': True}
-        self.changeHook = change_hook.ChangeHookResource(dialects=dialects, master=fakeMasterForHooks())
+        self.changeHook = change_hook.ChangeHookResource(
+            dialects=dialects, master=fakeMasterForHooks())
 
     # Test 'base' hook with attributes. We should get a json string
     # representing a Change object as a dictionary. All values show be set.

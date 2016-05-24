@@ -13,20 +13,20 @@
 #
 # Copyright Buildbot Team Members
 import cStringIO as StringIO
-import mock
 import os
 import shutil
 import sys
 
+import mock
 import twisted
+from twisted.internet import defer
+from twisted.protocols import basic
+from twisted.trial import unittest
 
 from buildbot.schedulers import trysched
 from buildbot.test.util import dirs
 from buildbot.test.util import scheduler
 from buildbot.util import json
-from twisted.internet import defer
-from twisted.protocols import basic
-from twisted.trial import unittest
 
 
 class TryBase(unittest.TestCase):
@@ -60,7 +60,8 @@ class JobdirService(dirs.DirsMixin, unittest.TestCase):
         self.tearDownDirs()
 
     def test_messageReceived(self):
-        scheduler = mock.Mock()       # stub out svc.scheduler.handleJobFile and .jobdir
+        # stub out svc.scheduler.handleJobFile and .jobdir
+        scheduler = mock.Mock()
 
         def handleJobFile(filename, f):
             self.assertEqual(filename, 'jobdata')
@@ -82,6 +83,7 @@ class JobdirService(dirs.DirsMixin, unittest.TestCase):
 class Try_Jobdir(scheduler.SchedulerMixin, unittest.TestCase):
 
     OBJECTID = 23
+    SCHEDULERID = 3
 
     def setUp(self):
         self.setUpScheduler()
@@ -104,7 +106,7 @@ class Try_Jobdir(scheduler.SchedulerMixin, unittest.TestCase):
         # build scheduler
         kwargs = dict(name="tsched", builderNames=['a'], jobdir=self.jobdir)
         sched = self.attachScheduler(
-            trysched.Try_Jobdir(**kwargs), self.OBJECTID,
+            trysched.Try_Jobdir(**kwargs), self.OBJECTID, self.SCHEDULERID,
             overrideBuildsetMethods=True)
 
         # watch interaction with the watcher service
@@ -174,7 +176,8 @@ class Try_Jobdir(scheduler.SchedulerMixin, unittest.TestCase):
 
     def test_parseJob_longer_than_netstring_MAXLENGTH(self):
         self.patch(basic.NetstringReceiver, 'MAX_LENGTH', 100)
-        sched = trysched.Try_Jobdir(name='tsched', builderNames=['a'], jobdir='foo')
+        sched = trysched.Try_Jobdir(
+            name='tsched', builderNames=['a'], jobdir='foo')
         jobstr = self.makeNetstring(
             '1', 'extid', 'trunk', '1234', '1', 'this is my diff, -- ++, etc.',
             'buildera', 'builderc'
@@ -505,7 +508,7 @@ class Try_Jobdir(scheduler.SchedulerMixin, unittest.TestCase):
         sched = self.attachScheduler(
             trysched.Try_Jobdir(
                 name='tsched', builderNames=['buildera', 'builderb'],
-                jobdir='foo'), self.OBJECTID,
+                jobdir='foo'), self.OBJECTID, self.SCHEDULERID,
             overrideBuildsetMethods=True,
             createBuilderDB=True)
         fakefile = mock.Mock()
@@ -642,6 +645,7 @@ class Try_Jobdir(scheduler.SchedulerMixin, unittest.TestCase):
 class Try_Userpass_Perspective(scheduler.SchedulerMixin, unittest.TestCase):
 
     OBJECTID = 26
+    SCHEDULERID = 6
 
     def setUp(self):
         self.setUpScheduler()
@@ -651,7 +655,7 @@ class Try_Userpass_Perspective(scheduler.SchedulerMixin, unittest.TestCase):
 
     def makeScheduler(self, **kwargs):
         sched = self.attachScheduler(trysched.Try_Userpass(**kwargs),
-                                     self.OBJECTID,
+                                     self.OBJECTID, self.SCHEDULERID,
                                      overrideBuildsetMethods=True,
                                      createBuilderDB=True)
         # Try will return a remote version of master.status, so give it
@@ -761,6 +765,7 @@ class Try_Userpass_Perspective(scheduler.SchedulerMixin, unittest.TestCase):
 class Try_Userpass(scheduler.SchedulerMixin, unittest.TestCase):
 
     OBJECTID = 25
+    SCHEDULERID = 5
 
     def setUp(self):
         self.setUpScheduler()
@@ -770,7 +775,7 @@ class Try_Userpass(scheduler.SchedulerMixin, unittest.TestCase):
 
     def makeScheduler(self, **kwargs):
         sched = self.attachScheduler(trysched.Try_Userpass(**kwargs),
-                                     self.OBJECTID)
+                                     self.OBJECTID, self.SCHEDULERID)
         return sched
 
     def test_service(self):

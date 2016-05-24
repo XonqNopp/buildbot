@@ -13,15 +13,9 @@
 #
 # Copyright Buildbot Team Members
 # Copyright 2013 (c) Mamba Team
-
-try:
-    import json
-    assert json
-except ImportError:
-    import simplejson as json
+import json
 
 from dateutil.parser import parse as dateparse
-
 from twisted.python import log
 
 

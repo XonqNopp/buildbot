@@ -33,6 +33,10 @@ class BuildmasterTimeoutError(Exception):
     pass
 
 
+class BuildmasterStartupError(Exception):
+    pass
+
+
 class ReconfigError(Exception):
     pass
 
@@ -132,7 +136,7 @@ class LogWatcher(LineOnlyReceiver):
                 break
 
         if "message from master: attached" in line:
-            return self.finished("buildslave")
+            return self.finished("worker")
         if "reconfig aborted" in line or 'reconfig partially applied' in line:
             return self.finished(Failure(ReconfigError()))
         if "Server Shut Down" in line:
@@ -141,3 +145,5 @@ class LogWatcher(LineOnlyReceiver):
             return self.finished("buildmaster")
         if "BuildMaster is running" in line:
             return self.finished("buildmaster")
+        if "BuildMaster startup failed" in line:
+            return self.finished(Failure(BuildmasterStartupError()))

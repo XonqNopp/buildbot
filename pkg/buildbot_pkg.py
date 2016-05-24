@@ -13,17 +13,16 @@
 #
 # Copyright Buildbot Team Members
 
+import os
 import subprocess
-
 # XXX(sa2ajj): this is an interesting mix of distutils and setuptools.  Needs
 # to be reviewed.
 from distutils.command.build import build
 from distutils.version import LooseVersion
+
 from setuptools import setup
 from setuptools.command.build_py import build_py
 from setuptools.command.egg_info import egg_info
-
-import os
 
 
 def check_output(cmd):
@@ -53,7 +52,8 @@ def getVersion(init_file):
     VERSION_MATCH = re.compile(r'(\d+\.\d+(\.\d+)?(\w|-)*)')
 
     try:
-        p = Popen(['git', 'describe', '--tags', '--always'], stdout=PIPE, stderr=STDOUT, cwd=cwd)
+        p = Popen(['git', 'describe', '--tags', '--always'],
+                  stdout=PIPE, stderr=STDOUT, cwd=cwd)
         out = p.communicate()[0]
 
         if (not p.returncode) and out:
@@ -89,7 +89,8 @@ def getVersion(init_file):
 # - install, via egg_info
 # - sdist, via egg_info
 # - bdist_wheel, via build
-# This is why we override both egg_info and build, and the first run build the js.
+# This is why we override both egg_info and build, and the first run build
+# the js.
 
 js_built = False
 
@@ -103,11 +104,19 @@ def build_js(cmd):
         npm_version = check_output("npm -v")
         npm_bin = check_output("npm bin").strip()
         assert npm_version != "", "need nodejs and npm installed in current PATH"
-        assert LooseVersion(npm_version) >= LooseVersion("1.4"), "npm < 1.4 (%s)" % (npm_version)
-        cmd.spawn(['npm', 'install'])
-        cmd.spawn([os.path.join(npm_bin, "gulp"), 'prod', '--notests'])
+        assert LooseVersion(npm_version) >= LooseVersion(
+            "1.4"), "npm < 1.4 (%s)" % (npm_version)
+        npm_cmd = ['npm', 'install']
+        gulp_cmd = [os.path.join(npm_bin, "gulp"), 'prod', '--notests']
+        if os.name == 'nt':
+            subprocess.call(npm_cmd, shell=True)
+            subprocess.call(gulp_cmd, shell=True)
+        else:
+            cmd.spawn(npm_cmd)
+            cmd.spawn(gulp_cmd)
 
-    cmd.copy_tree(os.path.join(package, 'static'), os.path.join("build", "lib", package, "static"))
+    cmd.copy_tree(os.path.join(package, 'static'), os.path.join(
+        "build", "lib", package, "static"))
 
     with open(os.path.join("build", "lib", package, "VERSION"), "w") as f:
         f.write(cmd.distribution.metadata.version)
@@ -132,7 +141,7 @@ class my_egg_info(egg_info):
         return egg_info.run(self)
 
 
-# XXX(sa2ajj): this class exists only to address https://bitbucket.org/pypa/setuptools/issue/261
+# XXX(sa2ajj): this class exists only to address https://github.com/pypa/setuptools/issues/261
 # Once that's fixed, this class should go.
 class my_build_py(build_py):
 

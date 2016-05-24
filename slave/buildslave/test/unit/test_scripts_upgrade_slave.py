@@ -13,22 +13,23 @@
 #
 # Copyright Buildbot Team Members
 
-import mock
 import os
+
+import mock
+from twisted.trial import unittest
 
 from buildslave.scripts import upgrade_slave
 from buildslave.test.util import misc
-from twisted.trial import unittest
 
 MODERN_BUILDBOT_TAC = \
-"""# dummy buildbot.tac
+    """# dummy buildbot.tac
 import os
 
 from buildslave.bot import BuildSlave
 """
 
 OLD_BUILDBOT_TAC = \
-"""# dummy buildbot.tac
+    """# dummy buildbot.tac
 import os
 
 from buildbot.slave.bot import BuildSlave
@@ -36,8 +37,8 @@ from buildbot.slave.bot import BuildSlave
 
 
 class TestUpgradeSlave(misc.IsBuildslaveDirMixin,
+                       misc.StdoutAssertionsMixin,
                        misc.FileIOMixin,
-                       misc.LoggingMixin,
                        unittest.TestCase):
 
     """
@@ -46,7 +47,7 @@ class TestUpgradeSlave(misc.IsBuildslaveDirMixin,
     config = {"basedir": "dummy"}
 
     def setUp(self):
-        self.setUpLogging()
+        self.setUpStdoutAssertions()
 
         # expected buildbot.tac relative path
         self.buildbot_tac = os.path.join(self.config["basedir"],
@@ -81,8 +82,8 @@ class TestUpgradeSlave(misc.IsBuildslaveDirMixin,
         self.assertEqual(upgrade_slave.upgradeSlave(self.config), 0,
                          "unexpected exit code")
 
-        # check message to the log
-        self.assertLogged("No changes made")
+        # check message to stdout
+        self.assertStdoutEqual("No changes made\n")
 
         # check that open() was called with correct path
         self.open.assert_called_once_with(self.buildbot_tac)
@@ -106,8 +107,8 @@ class TestUpgradeSlave(misc.IsBuildslaveDirMixin,
         self.assertEqual(upgrade_slave.upgradeSlave(self.config), 0,
                          "unexpected exit code")
 
-        # check message to the log
-        self.assertLogged("buildbot.tac updated")
+        # check message to stdout
+        self.assertStdoutEqual("buildbot.tac updated\n")
 
         # check calls to open()
         self.open.assert_has_calls([mock.call(self.buildbot_tac),

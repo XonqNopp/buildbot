@@ -12,7 +12,11 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
+from mock import Mock
+from twisted.internet import defer
+from twisted.internet import reactor
+from twisted.python import failure
+from twisted.trial import unittest
 from zope.interface import implements
 
 from buildbot import config
@@ -27,11 +31,6 @@ from buildbot.steps import trigger
 from buildbot.test.fake import fakedb
 from buildbot.test.util import steps
 from buildbot.test.util.interfaces import InterfaceTests
-from mock import Mock
-from twisted.internet import defer
-from twisted.internet import reactor
-from twisted.python import failure
-from twisted.trial import unittest
 
 
 class FakeTriggerable(object):
@@ -123,7 +122,7 @@ class TestTrigger(steps.BuildStepMixin, unittest.TestCase):
         make_fake_build = lambda brid: fakedb.Build(
             buildrequestid=brid, id=BRID_TO_BID(brid),
             number=BRID_TO_BUILD_NUMBER(brid), masterid=9,
-            buildslaveid=13)
+            workerid=13)
 
         m.db.insertTestData([
             fakedb.Builder(id=77, name='A'),
@@ -131,7 +130,7 @@ class TestTrigger(steps.BuildStepMixin, unittest.TestCase):
             fakedb.Master(id=9),
             fakedb.Buildset(id=2022),
             fakedb.Buildset(id=2011),
-            fakedb.Buildslave(id=13, name="some:slave"),
+            fakedb.Worker(id=13, name="some:worker"),
             make_fake_br(11, 77),
             make_fake_br(22, 78),
             make_fake_build(11),
@@ -338,9 +337,9 @@ class TestTrigger(steps.BuildStepMixin, unittest.TestCase):
                                            revision='12345'),
                            FakeSourceStamp(codebase='cb2',
                                            revision='12345')
-                           ],
-                       gotRevisionsInBuild={'cb1': 23456, 'cb2': 34567},
-                       )
+        ],
+            gotRevisionsInBuild={'cb1': 23456, 'cb2': 34567},
+        )
         self.expectOutcome(result=SUCCESS)
         self.expectTriggeredWith(
             a=(False,

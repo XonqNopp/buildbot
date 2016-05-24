@@ -12,8 +12,9 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import textwrap
+
+from twisted.trial import unittest
 
 from buildbot.process.properties import Property
 from buildbot.process.results import FAILURE
@@ -22,7 +23,7 @@ from buildbot.process.results import WARNINGS
 from buildbot.steps import python_twisted
 from buildbot.test.fake.remotecommand import ExpectShell
 from buildbot.test.util import steps
-from twisted.trial import unittest
+
 
 failureLog = '''\
 buildbot.test.unit.test_steps_python_twisted.Trial.testProperties ... [FAILURE]
@@ -195,7 +196,8 @@ class Trial(steps.BuildStepMixin, unittest.TestCase):
             + ExpectShell.log('stdio', stdout=failureLog)
             + 1
         )
-        self.expectOutcome(result=FAILURE, state_string='tests 8 failures (failure)')
+        self.expectOutcome(
+            result=FAILURE, state_string='tests 8 failures (failure)')
         self.expectLogfile('problems', failureLog.split('\n\n', 1)[1][:-1])
         self.expectLogfile('warnings', textwrap.dedent('''\
                 buildbot.test.unit.test_steps_python_twisted.Trial.test_run_env_nodupe ... [FAILURE]/home/dustin/code/buildbot/t/buildbot/master/buildbot/test/fake/logfile.py:92: UserWarning: step uses removed LogFile method `getText`
@@ -295,9 +297,12 @@ class HLint(steps.BuildStepMixin, unittest.TestCase):
                        buildFiles=['foo.xhtml'])
         self.expectCommands(
             ExpectShell(workdir='build',
-                        command=['bin/lore', '-p', '--output', 'lint', 'foo.xhtml'],
+                        command=[
+                            'bin/lore', '-p', '--output', 'lint', 'foo.xhtml'],
                         usePTY="slave-config")
-            + ExpectShell.log('stdio', stdout="dunno what hlint output looks like..\n")
+            +
+            ExpectShell.log(
+                'stdio', stdout="dunno what hlint output looks like..\n")
             + 0
         )
         self.expectLogfile('files', 'foo.xhtml\n')
@@ -309,7 +314,8 @@ class HLint(steps.BuildStepMixin, unittest.TestCase):
                        buildFiles=['foo.xhtml'])
         self.expectCommands(
             ExpectShell(workdir='build',
-                        command=['bin/lore', '-p', '--output', 'lint', 'foo.xhtml'],
+                        command=[
+                            'bin/lore', '-p', '--output', 'lint', 'foo.xhtml'],
                         usePTY="slave-config")
             + ExpectShell.log('stdio', stdout="colon: meaning warning\n")
             + 0

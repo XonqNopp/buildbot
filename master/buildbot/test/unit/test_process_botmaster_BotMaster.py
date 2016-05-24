@@ -12,15 +12,14 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import mock
+from twisted.internet import defer
+from twisted.trial import unittest
 
 from buildbot import config
 from buildbot.process import factory
 from buildbot.process.botmaster import BotMaster
 from buildbot.test.fake import fakemaster
-from twisted.internet import defer
-from twisted.trial import unittest
 
 
 class TestCleanShutdown(unittest.TestCase):
@@ -146,7 +145,7 @@ class TestBotMaster(unittest.TestCase):
     @defer.inlineCallbacks
     def test_reconfigServiceBuilders_add_remove(self):
         bc = config.BuilderConfig(name='bldr', factory=factory.BuildFactory(),
-                                  slavename='f')
+                                  workername='f')
         self.new_config.builders = [bc]
 
         yield self.botmaster.reconfigServiceBuilders(self.new_config)
@@ -172,17 +171,17 @@ class TestBotMaster(unittest.TestCase):
 
         brd.maybeStartBuildsOn.assert_called_once_with(['frank'])
 
-    def test_maybeStartBuildsForSlave(self):
+    def test_maybeStartBuildsForWorker(self):
         brd = self.botmaster.brd = mock.Mock()
         b1 = mock.Mock(name='frank')
         b1.name = 'frank'
         b2 = mock.Mock(name='larry')
         b2.name = 'larry'
-        self.botmaster.getBuildersForSlave = mock.Mock(return_value=[b1, b2])
+        self.botmaster.getBuildersForWorker = mock.Mock(return_value=[b1, b2])
 
-        self.botmaster.maybeStartBuildsForSlave('centos')
+        self.botmaster.maybeStartBuildsForWorker('centos')
 
-        self.botmaster.getBuildersForSlave.assert_called_once_with('centos')
+        self.botmaster.getBuildersForWorker.assert_called_once_with('centos')
         brd.maybeStartBuildsOn.assert_called_once_with(['frank', 'larry'])
 
     def test_maybeStartBuildsForAll(self):

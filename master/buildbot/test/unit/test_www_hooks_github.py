@@ -12,31 +12,29 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
-from calendar import timegm
 import hmac
+from calendar import timegm
 from hashlib import sha1
 from StringIO import StringIO
 
+from twisted.internet import defer
+from twisted.trial import unittest
+
+from buildbot.test.fake.web import FakeRequest
+from buildbot.test.fake.web import fakeMasterForHooks
 from buildbot.www.change_hook import ChangeHookResource
 from buildbot.www.hooks.github import _HEADER_CT
 from buildbot.www.hooks.github import _HEADER_EVENT
 from buildbot.www.hooks.github import _HEADER_SIGNATURE
 
-from buildbot.test.fake.web import FakeRequest
-from buildbot.test.fake.web import fakeMasterForHooks
-
-from twisted.trial import unittest
-from twisted.internet import defer
-
 # Sample GITHUB commit payload from http://help.github.com/post-receive-hooks/
 # Added "modfied" and "removed", and change email
-
 gitJsonPayload = """
 {
   "before": "5aef35982fb2d34e9d9d4502f6ede1072793222d",
   "repository": {
     "url": "http://github.com/defunkt/github",
+    "html_url": "http://github.com/defunkt/github",
     "name": "github",
     "full_name": "defunkt/github",
     "description": "You're lookin' at it.",
@@ -84,6 +82,7 @@ gitJsonPayloadNonBranch = """
   "before": "5aef35982fb2d34e9d9d4502f6ede1072793222d",
   "repository": {
     "url": "http://github.com/defunkt/github",
+    "html_url": "http://github.com/defunkt/github",
     "name": "github",
     "full_name": "defunkt/github",
     "description": "You're lookin' at it.",
@@ -244,6 +243,7 @@ gitJsonPayloadEmpty = """
   "before": "5aef35982fb2d34e9d9d4502f6ede1072793222d",
   "repository": {
     "url": "http://github.com/defunkt/github",
+    "html_url": "http://github.com/defunkt/github",
     "name": "github",
     "full_name": "defunkt/github",
     "description": "You're lookin' at it.",
@@ -391,7 +391,7 @@ class TestChangeHookConfiguredWithGitChange(unittest.TestCase):
     @defer.inlineCallbacks
     def testGitWithDistinctFalse(self):
         self.request = _prepare_request('push', [gitJsonPayload.replace('"distinct": true,',
-                                               '"distinct": false,')])
+                                                                        '"distinct": false,')])
 
         yield self.request.test_render(self.changeHook)
         self.assertEqual(len(self.changeHook.master.addedChanges), 1)
@@ -459,7 +459,7 @@ class TestChangeHookConfiguredWithGitChange(unittest.TestCase):
         self.assertEquals(len(self.changeHook.master.addedChanges), 1)
         change = self.changeHook.master.addedChanges[0]
         self.assertEquals(change["repository"],
-                          "https://github.com/defunkt/github.git")
+                          "https://github.com/defunkt/github")
         self.assertEquals(timegm(change["when_timestamp"].utctimetuple()),
                           1412899790)
         self.assertEquals(change["author"],

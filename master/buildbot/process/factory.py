@@ -12,7 +12,6 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import warnings
 
 from twisted.python import deprecate
@@ -30,9 +29,8 @@ from buildbot.steps.shell import Test
 from buildbot.steps.source.cvs import CVS
 from buildbot.steps.source.svn import SVN
 
+
 # deprecated, use BuildFactory.addStep
-
-
 @deprecate.deprecated(versions.Version("buildbot", 0, 8, 6))
 def s(steptype, **kwargs):
     # convenience function for master.cfg files, to create step
@@ -49,7 +47,7 @@ class BuildFactory(util.ComparableMixin):
     buildClass = Build
     useProgress = 1
     workdir = "build"
-    compare_attrs = ['buildClass', 'steps', 'useProgress', 'workdir']
+    compare_attrs = ('buildClass', 'steps', 'useProgress', 'workdir')
 
     def __init__(self, steps=None):
         self.steps = []
@@ -109,7 +107,8 @@ class GNUAutoconf(BuildFactory):
         if reconf is True:
             reconf = ["autoreconf", "-si"]
         if reconf is not None:
-            self.addStep(ShellCommand(name="autoreconf", command=reconf, env=configureEnv))
+            self.addStep(
+                ShellCommand(name="autoreconf", command=reconf, env=configureEnv))
 
         if configure is not None:
             # we either need to wind up with a string (which will be
@@ -217,7 +216,8 @@ class BasicBuildFactory(GNUAutoconf):
         method = "clobber"
         if cvsCopy:
             method = "copy"
-        source = CVS(cvsroot=cvsroot, cvsmodule=cvsmodule, mode=mode, method=method)
+        source = CVS(
+            cvsroot=cvsroot, cvsmodule=cvsmodule, mode=mode, method=method)
         GNUAutoconf.__init__(self, source,
                              configure=configure, configureEnv=configureEnv,
                              compile=compile,

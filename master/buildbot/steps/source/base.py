@@ -12,7 +12,7 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
+from twisted.python import log
 
 from buildbot.process import buildstep
 from buildbot.process import remotecommand
@@ -20,13 +20,12 @@ from buildbot.process import remotetransfer
 from buildbot.process.buildstep import LoggingBuildStep
 from buildbot.status.builder import FAILURE
 from buildbot.status.builder import SKIPPED
-from buildbot.steps.slave import CompositeStepMixin
-from twisted.python import log
+from buildbot.steps.worker import CompositeStepMixin
 
 
 class Source(LoggingBuildStep, CompositeStepMixin):
 
-    """This is a base class to generate a source tree in the buildslave.
+    """This is a base class to generate a source tree in the worker.
     Each version control system has a specialized subclass, and is expected
     to override __init__ and implement computeSourceRevision() and
     startVC(). The class as a whole builds up the self.args dictionary, then
@@ -71,7 +70,7 @@ class Source(LoggingBuildStep, CompositeStepMixin):
 
         The source stamp helps avoid a race condition in which someone
         commits a change after the master has decided to start a build
-        but before the slave finishes checking out the sources. At best
+        but before the worker finishes checking out the sources. At best
         this results in a build which contains more changes than the
         buildmaster thinks it has (possibly resulting in the wrong
         person taking the blame for any problems that result), at worst
@@ -81,7 +80,7 @@ class Source(LoggingBuildStep, CompositeStepMixin):
         @type logEnviron: boolean
         @param logEnviron: If this option is true (the default), then the
                            step's logfile will describe the environment
-                           variables on the slave. In situations where the
+                           variables on the worker. In situations where the
                            environment is not relevant and is long, it may
                            be easier to set logEnviron=False.
 
@@ -108,8 +107,8 @@ class Source(LoggingBuildStep, CompositeStepMixin):
             descriptionSuffix = [codebase]
 
         LoggingBuildStep.__init__(self, description=description,
-            descriptionDone=descriptionDone, descriptionSuffix=descriptionSuffix,
-            **kwargs)
+                                  descriptionDone=descriptionDone, descriptionSuffix=descriptionSuffix,
+                                  **kwargs)
 
         # This will get added to args later, after properties are rendered
         self.workdir = workdir
@@ -247,7 +246,8 @@ class Source(LoggingBuildStep, CompositeStepMixin):
             return d
 
         d = _downloadFile(diff, ".buildbot-diff")
-        d.addCallback(lambda _: _downloadFile("patched\n", ".buildbot-patched"))
+        d.addCallback(
+            lambda _: _downloadFile("patched\n", ".buildbot-patched"))
         d.addCallback(lambda _: self.applyPatch(patch))
         cmd = remotecommand.RemoteCommand('rmdir', {'dir': self.build.path_module.join(self.workdir, ".buildbot-diff"),
                                                     'logEnviron': self.logEnviron})
@@ -262,7 +262,8 @@ class Source(LoggingBuildStep, CompositeStepMixin):
         return d
 
     def sourcedirIsPatched(self):
-        d = self.pathExists(self.build.path_module.join(self.workdir, '.buildbot-patched'))
+        d = self.pathExists(
+            self.build.path_module.join(self.workdir, '.buildbot-patched'))
         return d
 
     def start(self):
@@ -299,8 +300,10 @@ class Source(LoggingBuildStep, CompositeStepMixin):
                 if patch:
                     self.addCompleteLog("patch", patch[1])
             else:
-                log.msg("No sourcestamp found in build for codebase '%s'" % self.codebase)
-                self.step_status.setText(["Codebase", '%s' % self.codebase, "not", "in", "build"])
+                log.msg(
+                    "No sourcestamp found in build for codebase '%s'" % self.codebase)
+                self.step_status.setText(
+                    ["Codebase", '%s' % self.codebase, "not", "in", "build"])
                 self.addCompleteLog("log",
                                     "No sourcestamp found in build for codebase '%s'"
                                     % self.codebase)

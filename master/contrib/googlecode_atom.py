@@ -24,7 +24,6 @@
 #
 
 import datetime
-
 from xml.dom import minidom
 
 from twisted.internet import defer
@@ -48,7 +47,7 @@ class GoogleCodeAtomPoller(base.PollingChangeSource):
     TODO: branch processing
     """
 
-    compare_attrs = ['feedurl', 'pollinterval']
+    compare_attrs = ('feedurl', 'pollinterval')
     parent = None
     loop = None
     volatile = ['loop']

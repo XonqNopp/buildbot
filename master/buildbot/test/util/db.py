@@ -12,17 +12,19 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import os
+
+from sqlalchemy.schema import MetaData
+from twisted.internet import defer
+from twisted.internet import reactor
+from twisted.python import log
+from twisted.trial import unittest
 
 from buildbot.db import enginestrategy
 from buildbot.db import model
 from buildbot.db import pool
 from buildbot.util.sautils import sa_version
-from sqlalchemy.schema import MetaData
-from twisted.internet import defer
-from twisted.python import log
-from twisted.trial import unittest
+from buildbot.util.sautils import withoutSqliteForeignKeys
 
 
 def skip_for_dialect(dialect):
@@ -135,7 +137,11 @@ class RealDatabaseMixin(object):
 
             # Drop all reflected tables and indices. May fail, e.g. if
             # SQLAlchemy wouldn't be able to break circular references.
-            meta.drop_all()
+            # Sqlalchemy fk support with sqlite is not yet perfect, so we must deactivate fk during that
+            # operation, even though we made our possible to use use_alter
+            with withoutSqliteForeignKeys(conn.engine, conn):
+                meta.drop_all()
+
         except Exception:
             # sometimes this goes badly wrong; being able to see the schema
             # can be a big help
@@ -188,7 +194,7 @@ class RealDatabaseMixin(object):
         if not want_pool:
             return defer.succeed(None)
 
-        self.db_pool = pool.DBThreadPool(self.db_engine)
+        self.db_pool = pool.DBThreadPool(self.db_engine, reactor=reactor)
 
         log.msg("cleaning database %s" % self.db_url)
         d = self.db_pool.do(self.__thd_clean_database)

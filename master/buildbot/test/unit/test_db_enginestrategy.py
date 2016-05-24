@@ -12,12 +12,12 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
-from buildbot.db import enginestrategy
 from sqlalchemy.engine import url
 from sqlalchemy.pool import NullPool
 from twisted.python import runtime
 from twisted.trial import unittest
+
+from buildbot.db import enginestrategy
 
 
 class BuildbotEngineStrategy_special_cases(unittest.TestCase):
@@ -88,7 +88,9 @@ class BuildbotEngineStrategy_special_cases(unittest.TestCase):
                          ["sqlite://", 1,  # only one conn at a time
                           dict(basedir='my-base-dir',
                                # note: no poolclass= argument
-                               pool_size=1)])  # extra in-memory args
+                               # extra in-memory args
+                               pool_size=1,
+                               connect_args=dict(check_same_thread=False))])
 
     def test_mysql_simple(self):
         u = url.make_url("mysql://host/dbname")
@@ -165,7 +167,8 @@ class BuildbotEngineStrategy_special_cases(unittest.TestCase):
         kwargs = dict(basedir='my-base-dir')
         u, kwargs, max_conns = self.strat.special_case_mysql(u, kwargs)
         exp = self.mysql_kwargs.copy()
-        exp['connect_args'] = dict(init_command='SET default_storage_engine=foo')
+        exp['connect_args'] = dict(
+            init_command='SET default_storage_engine=foo')
         self.assertEqual([str(u), max_conns, self.filter_kwargs(kwargs)],
                          ["mysql:///dbname?charset=utf8&use_unicode=True", None,
                           exp])

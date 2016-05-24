@@ -12,11 +12,14 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-from future.utils import iteritems
-
 import collections
 import re
 import weakref
+
+from future.utils import iteritems
+from twisted.internet import defer
+from twisted.python.components import registerAdapter
+from zope.interface import implements
 
 from buildbot import config
 from buildbot import util
@@ -24,9 +27,7 @@ from buildbot.interfaces import IProperties
 from buildbot.interfaces import IRenderable
 from buildbot.util import flatten
 from buildbot.util import json
-from twisted.internet import defer
-from twisted.python.components import registerAdapter
-from zope.interface import implements
+from buildbot.worker_transition import reportDeprecatedWorkerNameUsage
 
 
 class Properties(util.ComparableMixin):
@@ -227,7 +228,8 @@ class _PropertyMap(object):
 
         def colon_tilde(mo):
             # %(prop:~repl)s
-            # if prop exists and is true (nonempty), use it; otherwise, use repl
+            # if prop exists and is true (nonempty), use it; otherwise, use
+            # repl
             prop, repl = mo.group(1, 2)
             if prop in self.temp_vals and self.temp_vals[prop]:
                 return self.temp_vals[prop]
@@ -289,9 +291,28 @@ class WithProperties(util.ComparableMixin):
             self.lambda_subs = lambda_subs
             for key, val in iteritems(self.lambda_subs):
                 if not callable(val):
-                    raise ValueError('Value for lambda substitution "%s" must be callable.' % key)
+                    raise ValueError(
+                        'Value for lambda substitution "%s" must be callable.' % key)
         elif lambda_subs:
-            raise ValueError('WithProperties takes either positional or keyword substitutions, not both.')
+            raise ValueError(
+                'WithProperties takes either positional or keyword substitutions, not both.')
+
+        # Deprecated after worker-name transition property names support.
+        if self.args:
+            # Property names are specified in the arguments, e.g.
+            #     WithProperties("build-%s-%s.tar.gz", "branch", "revision")
+            for prop_name in self.args:
+                # Report on parent frame.
+                _on_property_usage(prop_name, stacklevel=1)
+        else:
+            # Property names are specified in string format, e.g.
+            #     WithProperties('REVISION=%(got_revision)s')
+            # TODO: this is not perfect parsing of string formatting, but well
+            # enough for real cases.
+            for match in re.finditer(r"%\(([A-Za-z0-9_]+)\)", self.fmtstring):
+                prop_name = match.group(1)
+                # Report on parent frame.
+                _on_property_usage(prop_name, stacklevel=1)
 
     def getRenderingFor(self, build):
         pmap = _PropertyMap(build.getProperties())
@@ -307,13 +328,25 @@ class WithProperties(util.ComparableMixin):
         return s
 
 
-_notHasKey = object()  # Marker object for _Lookup(..., hasKey=...) default
+class _NotHasKey(util.ComparableMixin):
+
+    """A marker for missing ``hasKey`` parameter.
+
+    To withstand ``deepcopy``, ``reload`` and pickle serialization round trips,
+    check it with ``==`` or ``!=``.
+    """
+    compare_attrs = ()
+
+# any instance of _NotHasKey would do, yet we don't want to create and delete
+# them all the time
+_notHasKey = _NotHasKey()
 
 
 class _Lookup(util.ComparableMixin, object):
     implements(IRenderable)
 
-    compare_attrs = ('value', 'index', 'default', 'defaultWhenFalse', 'hasKey', 'elideNoneAs')
+    compare_attrs = (
+        'value', 'index', 'default', 'defaultWhenFalse', 'hasKey', 'elideNoneAs')
 
     def __init__(self, value, index, default=None,
                  defaultWhenFalse=True, hasKey=_notHasKey,
@@ -334,7 +367,7 @@ class _Lookup(util.ComparableMixin, object):
             ', defaultWhenFalse=False'
             if not self.defaultWhenFalse else '',
             ', hasKey=%r' % (self.hasKey,)
-            if self.hasKey is not _notHasKey else '',
+            if self.hasKey != _notHasKey else '',
             ', elideNoneAs=%r' % (self.elideNoneAs,)
             if self.elideNoneAs is not None else '')
 
@@ -350,9 +383,9 @@ class _Lookup(util.ComparableMixin, object):
                 rv = yield build.render(value[index])
                 if not rv:
                     rv = yield build.render(self.default)
-                elif self.hasKey is not _notHasKey:
+                elif self.hasKey != _notHasKey:
                     rv = yield build.render(self.hasKey)
-            elif self.hasKey is not _notHasKey:
+            elif self.hasKey != _notHasKey:
                 rv = yield build.render(self.hasKey)
             else:
                 rv = yield build.render(value[index])
@@ -407,6 +440,27 @@ class _Lazy(util.ComparableMixin, object):
         return '_Lazy(%r)' % self.value
 
 
+def _on_property_usage(prop_name, stacklevel):
+    """Handle deprecated properties after worker-name transition.
+
+    :param stacklevel: stack level relative to the caller's frame.
+    Defaults to caller of the caller of this function.
+    """
+
+    # "Remove" current frame
+    stacklevel += 1
+
+    deprecated_to_new_props = {'slavename': 'workername'}
+
+    if prop_name in deprecated_to_new_props:
+        reportDeprecatedWorkerNameUsage(
+            "Property '{old_name}' is deprecated, "
+            "use '{new_name}' instead.".format(
+                old_name=prop_name,
+                new_name=deprecated_to_new_props[prop_name]),
+            stacklevel=stacklevel)
+
+
 class Interpolate(util.ComparableMixin, object):
 
     """
@@ -446,8 +500,13 @@ class Interpolate(util.ComparableMixin, object):
         except ValueError:
             prop, repl = arg, None
         if not Interpolate.identifier_re.match(prop):
-            config.error("Property name must be alphanumeric for prop Interpolation '%s'" % arg)
+            config.error(
+                "Property name must be alphanumeric for prop Interpolation '%s'" % arg)
             prop = repl = None
+
+        # Report in proper place with typical stack trace...
+        _on_property_usage(prop, stacklevel=4)
+
         return _thePropertyDict, prop, repl
 
     @staticmethod
@@ -460,14 +519,17 @@ class Interpolate(util.ComparableMixin, object):
                 codebase, attr = arg.split(":", 1)
                 repl = None
             except ValueError:
-                config.error("Must specify both codebase and attribute for src Interpolation '%s'" % arg)
+                config.error(
+                    "Must specify both codebase and attribute for src Interpolation '%s'" % arg)
                 return {}, None, None
 
         if not Interpolate.identifier_re.match(codebase):
-            config.error("Codebase must be alphanumeric for src Interpolation '%s'" % arg)
+            config.error(
+                "Codebase must be alphanumeric for src Interpolation '%s'" % arg)
             codebase = attr = repl = None
         if not Interpolate.identifier_re.match(attr):
-            config.error("Attribute must be alphanumeric for src Interpolation '%s'" % arg)
+            config.error(
+                "Attribute must be alphanumeric for src Interpolation '%s'" % arg)
             codebase = attr = repl = None
         return _SourceStampDict(codebase), attr, repl
 
@@ -477,7 +539,8 @@ class Interpolate(util.ComparableMixin, object):
         except ValueError:
             kw, repl = arg, None
         if not Interpolate.identifier_re.match(kw):
-            config.error("Keyword must be alphanumeric for kw Interpolation '%s'" % arg)
+            config.error(
+                "Keyword must be alphanumeric for kw Interpolation '%s'" % arg)
             kw = repl = None
         return _Lazy(self.kwargs), kw, repl
 
@@ -485,7 +548,8 @@ class Interpolate(util.ComparableMixin, object):
         try:
             key, arg = fmt.split(":", 1)
         except ValueError:
-            config.error("invalid Interpolate substitution without selector '%s'" % fmt)
+            config.error(
+                "invalid Interpolate substitution without selector '%s'" % fmt)
             return
 
         fn = getattr(self, "_parse_" + key, None)
@@ -536,7 +600,8 @@ class Interpolate(util.ComparableMixin, object):
         try:
             truePart, falsePart = self._splitBalancedParen(delim, repl[1:])
         except ValueError:
-            config.error("invalid Interpolate ternary expression '%s' with delimiter '%s'" % (repl[1:], repl[0]))
+            config.error("invalid Interpolate ternary expression '%s' with delimiter '%s'" % (
+                repl[1:], repl[0]))
             return None
         return _Lookup(d, kw,
                        hasKey=Interpolate(truePart, **self.kwargs),
@@ -566,7 +631,8 @@ class Interpolate(util.ComparableMixin, object):
                         self.interpolations[key] = fn(d, kw, tail)
                         break
                 if key not in self.interpolations:
-                    config.error("invalid Interpolate default type '%s'" % repl[0])
+                    config.error(
+                        "invalid Interpolate default type '%s'" % repl[0])
 
     def getRenderingFor(self, props):
         props = props.getProperties()
@@ -603,6 +669,9 @@ class Property(util.ComparableMixin):
         self.key = key
         self.default = default
         self.defaultWhenFalse = defaultWhenFalse
+
+        # Report on parent frame.
+        _on_property_usage(key, stacklevel=1)
 
     def getRenderingFor(self, props):
         if self.defaultWhenFalse:
@@ -735,7 +804,8 @@ class _DictRenderer(object):
     implements(IRenderable)
 
     def __init__(self, value):
-        self.value = _ListRenderer([_TupleRenderer((k, v)) for k, v in iteritems(value)])
+        self.value = _ListRenderer(
+            [_TupleRenderer((k, v)) for k, v in iteritems(value)])
 
     def getRenderingFor(self, build):
         d = self.value.getRenderingFor(build)
@@ -755,7 +825,8 @@ class Transform(object):
 
     def __init__(self, function, *args, **kwargs):
         if not callable(function) and not IRenderable.providedBy(function):
-            config.error("function given to Transform neither callable nor renderable")
+            config.error(
+                "function given to Transform neither callable nor renderable")
 
         self._function = function
         self._args = args

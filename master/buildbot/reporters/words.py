@@ -13,11 +13,9 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-
 import random
 import re
 import shlex
-
 from string import capitalize
 from string import join
 from string import lower
@@ -142,7 +140,8 @@ class BuildRequest:
             self.timer.cancel()
             del self.timer
         if self.useRevisions:
-            response = "build containing revision(s) [%s] forced" % s.getRevisions()
+            response = "build containing revision(s) [%s] forced" % s.getRevisions(
+            )
         else:
             response = "build #%d forced" % s.getNumber()
         self.parent.send(response)
@@ -223,7 +222,8 @@ class Contact(service.AsyncService):
             bdicts = yield self.master.data.get(('builders',),
                                                 filters=[resultspec.Filter('name', 'eq', [buildername])])
             if bdicts:
-                bdict = bdicts[0]  # Could there be more than one? One is enough.
+                # Could there be more than one? One is enough.
+                bdict = bdicts[0]
             else:
                 bdict = None
         elif builderid:
@@ -245,20 +245,21 @@ class Contact(service.AsyncService):
 
     @defer.inlineCallbacks
     def getOnlineBuilders(self):
-        all_buildslaves = yield self.master.data.get(('buildslaves',))
+        all_workers = yield self.master.data.get(('workers',))
         online_builderids = set()
-        for buildslave in all_buildslaves:
-            connected = buildslave['connected_to']
+        for worker in all_workers:
+            connected = worker['connected_to']
             if not connected:
                 continue
-            builders = buildslave['configured_on']
+            builders = worker['configured_on']
             builderids = [builder['builderid'] for builder in builders]
             online_builderids.update(builderids)
         defer.returnValue(list(online_builderids))
 
     @defer.inlineCallbacks
     def getRevisionsForBuild(self, bdict):
-        # FIXME: Need to get revision info! (build -> buildreq -> buildset -> sourcestamps)
+        # FIXME: Need to get revision info! (build -> buildreq -> buildset ->
+        # sourcestamps)
         defer.returnValue(["TODO"])
 
     def convertTime(self, seconds):
@@ -292,7 +293,8 @@ class Contact(service.AsyncService):
         """Returns list of arguments parsed by shlex.split() or
         raise UsageError if failed"""
         if isinstance(args, unicode):
-            # shlex does not handle unicode.  See http://bugs.python.org/issue1170
+            # shlex does not handle unicode.  See
+            # http://bugs.python.org/issue1170
             args = args.encode('ascii')
         try:
             return shlex.split(args)
@@ -347,7 +349,8 @@ class Contact(service.AsyncService):
             raise UsageError("try 'notify on|off <EVENT>'")
 
     def list_notified_events(self):
-        self.send("The following events are being notified: %r" % list(self.notify_events))
+        self.send("The following events are being notified: %r" %
+                  list(self.notify_events))
 
     def notify_for(self, *events):
         for event in events:
@@ -512,7 +515,8 @@ class Contact(service.AsyncService):
         else:
             # Abbreviate long lists of changes to simply two
             # revisions, and the number of additional changes.
-            # TODO: We can't get the list of the changes related to a build in nine
+            # TODO: We can't get the list of the changes related to a build in
+            # nine
             changes_str = ""
 
             r = "build #%d of %s started" % (buildNumber, builderName)
@@ -550,14 +554,16 @@ class Contact(service.AsyncService):
             r = "Hey! build %s #%d is complete: %s" % \
                 (builderName, buildNumber, results[0])
 
-        r += ' [%s]' % maybeColorize(build['state_string'], results[1], self.useColors)
+        r += ' [%s]' % maybeColorize(build['state_string'],
+                                     results[1], self.useColors)
         self.send(r)
 
         # FIXME: where do we get the list of changes for a build ?
         # if self.bot.showBlameList and buildResult != SUCCESS and len(build.changes) != 0:
         #    r += '  blamelist: ' + ', '.join(list(set([c.who for c in build.changes])))
 
-        # FIXME: where do we get the base_url? Then do we use the build Link to make the URL?
+        # FIXME: where do we get the base_url? Then do we use the build Link to
+        # make the URL?
         buildurl = None  # self.bot.status.getBuildbotURL() + build
         if buildurl:
             self.send("Build details are at %s" % buildurl)
@@ -621,10 +627,12 @@ class Contact(service.AsyncService):
             r = "Hey! build %s #%d is complete: %s" % \
                 (builder_name, buildnum, results[0])
 
-        r += ' [%s]' % maybeColorize(build['state_string'], results[1], self.useColors)
+        r += ' [%s]' % maybeColorize(build['state_string'],
+                                     results[1], self.useColors)
         self.send(r)
 
-        # FIXME: where do we get the base_url? Then do we use the build Link to make the URL?
+        # FIXME: where do we get the base_url? Then do we use the build Link to
+        # make the URL?
         buildurl = None  # self.bot.status.getBuildbotURL() + build
         if buildurl:
             self.send("Build details are at %s" % buildurl)
@@ -683,7 +691,8 @@ class Contact(service.AsyncService):
                 pvalue = pdict[prop]
                 if not pname_validate.match(pname) \
                         or not pval_validate.match(pvalue):
-                    log.msg("bad property name='%s', value='%s'" % (pname, pvalue))
+                    log.msg("bad property name='%s', value='%s'" %
+                            (pname, pvalue))
                     self.send("sorry, bad property name='%s', value='%s'" %
                               (pname, pvalue))
                     return
@@ -692,7 +701,9 @@ class Contact(service.AsyncService):
         reason = u"forced: by %s: %s" % (self.describeUser(), reason)
         try:
             yield self.master.data.updates.addBuildset(builderids=[builder['builderid']],
-                                                       scheduler=u"status.words",  # For now, we just use this as the id.
+                                                       # For now, we just use
+                                                       # this as the id.
+                                                       scheduler=u"status.words",
                                                        sourcestamps=[{'codebase': codebase, 'branch': branch,
                                                                       'revision': revision, 'project': project, 'repository': "null"}],
                                                        reason=reason,
@@ -728,7 +739,8 @@ class Contact(service.AsyncService):
 
             if self.useRevisions:
                 revisions = yield self.getRevisionsForBuild(bdict)
-                response = "build containing revision(s) [%s] interrupted" % ','.join(revisions)
+                response = "build containing revision(s) [%s] interrupted" % ','.join(
+                    revisions)
             else:
                 response = "build %d interrupted" % num
             self.send(response)
@@ -737,7 +749,8 @@ class Contact(service.AsyncService):
 
     def getCurrentBuildstep(self, build):
         d = self.master.data.get(('builds', build['buildid'], 'steps'),
-                                 filters=[resultspec.Filter('complete', 'eq', [False])],
+                                 filters=[
+                                     resultspec.Filter('complete', 'eq', [False])],
                                  order=['number'],
                                  limit=1)
         return d
@@ -839,7 +852,8 @@ class Contact(service.AsyncService):
             self.muted = False
             self.send("I'm baaaaaaaaaaack!")
         else:
-            self.send("You hadn't told me to be quiet, but it's the thought that counts, right?")
+            self.send(
+                "You hadn't told me to be quiet, but it's the thought that counts, right?")
     command_UNMUTE.usage = "unmute - disable a previous 'mute'"
 
     def command_HELP(self, args):
@@ -865,7 +879,8 @@ class Contact(service.AsyncService):
         if usage:
             self.send("Usage: %s" % usage)
         else:
-            self.send("No usage info for " + ' '.join(["'%s'" % arg for arg in args]))
+            self.send(
+                "No usage info for " + ' '.join(["'%s'" % arg for arg in args]))
     command_HELP.usage = "help <command> [<arg> [<subarg> ...]] - Give help for <command> or one of it's arguments"
 
     def command_SOURCE(self, args):

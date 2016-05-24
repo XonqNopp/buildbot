@@ -11,29 +11,50 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
+from __future__ import print_function
+
 import os
 import sys
 import textwrap
 
+import pkg_resources
+
+from buildbot.util.raml import RamlSpec
+
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-sys.path.append(os.path.abspath('.'))
+here = os.path.abspath('.')
+sys.path.append(here)
 
-# -- General configuration -----------------------------------------------------
+# -- General configuration -----------------------------------------------
+try:
+    import sphinxcontrib.blockdiag
+    assert sphinxcontrib.blockdiag
+except ImportError:
+    raise RuntimeError("sphinxcontrib.blockdiag is not installed. "
+                       "Please install documentation dependencies with `pip install buildbot[docs]`")
 
+try:
+    pkg_resources.require('docutils>=0.8')
+except pkg_resources.ResolutionError:
+    raise RuntimeError("docutils is not installed or has incompatible version. "
+                       "Please install documentation dependencies with `pip install buildbot[docs]`")
 # If your documentation needs a minimal Sphinx version, state it here.
 needs_sphinx = '1.0'
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
 extensions = [
+    'sphinx.ext.autodoc',
     'sphinx.ext.todo',
     'sphinx.ext.extlinks',
     'bbdocs.ext',
-    'sphinxcontrib.blockdiag'
+    'bbdocs.highlighterrors',
+    'sphinxcontrib.blockdiag',
+    'sphinxcontrib.jinja',
 ]
-todo_include_todos=True
+todo_include_todos = True
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -120,7 +141,7 @@ extlinks = {
     'src': ('https://github.com/buildbot/buildbot/blob/master/%s', None)
 }
 
-# -- Options for HTML output ---------------------------------------------------
+# -- Options for HTML output ---------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
@@ -204,7 +225,7 @@ html_use_modindex = True
 htmlhelp_basename = 'Buildbotdoc'
 
 
-# -- Options for LaTeX output --------------------------------------------------
+# -- Options for LaTeX output --------------------------------------------
 
 # The paper size ('letter' or 'a4').
 latex_paper_size = 'a4'
@@ -246,7 +267,7 @@ latex_show_urls = 'inline'
 # latex_domain_indices = True
 
 
-# -- Options for manual page output --------------------------------------------
+# -- Options for manual page output --------------------------------------
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
@@ -255,92 +276,19 @@ man_pages = [
      [u'Brian Warner'], 1)
 ]
 
+jinja_contexts = {
+    "data_api": {'raml': RamlSpec()}
+}
 
-# Monkey-patch Sphinx to treat unhiglighted code as error.
-import sphinx
-import sphinx.highlighting
+# Spell checker.
+try:
+    import enchant  # noqa # pylint: disable=unused-import
+except ImportError as ex:
+    print("enchant module import failed:\n"
+          "{0}\n"
+          "Spell checking disabled.".format(ex),
+          file=sys.stderr)
 
-from pkg_resources import parse_version
-from sphinx.errors import SphinxWarning
-
-# Versions of Sphinx below changeset 1860:19b394207746 (before v0.6.6 release)
-# won't work due to different PygmentsBridge interface.
-required_sphinx_version = '0.6.6'
-sphinx_version_supported = \
-    parse_version(sphinx.__version__) >= parse_version(required_sphinx_version)
-
-# This simple monkey-patch allows either fail on first unhighlighted block or
-# print all unhighlighted blocks and don't fail at all.
-# First behaviour is useful for testing that all code is highlighted, second ---
-# for fixing lots of unhighlighted code.
-fail_on_first_unhighlighted = True
-
-
-class UnhighlightedError(SphinxWarning):
-    pass
-
-# PygmentsBridge.unhighlighted() added in Sphinx in changeset 574:f1c885fdd6ad
-# (0.5 release).
-
-
-def patched_unhighlighted(self, source):
-    indented_source = '    ' + '\n    '.join(source.split('\n'))
-
-    if fail_on_first_unhighlighted:
-        msg = textwrap.dedent(u"""\
-            Block not highlighted:
-
-            %s
-
-            If it should be unhighlighted, please specify explicitly language of
-            this block as "none":
-
-            .. code-block:: none
-
-                ...
-
-            If this block is Python example, then it probably contains syntax
-            errors, such as unmatched brackets or invalid indentation.
-
-            Note that in most places you can use "..." in Python code as valid
-            anonymous expression.
-            """) % indented_source
-        raise UnhighlightedError(msg)
-    else:
-        msg = textwrap.dedent(u"""\
-            Unhighlighted block:
-
-            %s
-
-            """) % indented_source
-        sys.stderr.write(msg.encode('ascii', 'ignore'))
-
-        return orig_unhiglighted(self, source)
-
-# Compatible with PygmentsBridge.highlight_block since Sphinx'
-# 1860:19b394207746 changeset (v0.6.6 release)
-
-
-def patched_highlight_block(self, *args, **kwargs):
-    try:
-        return orig_highlight_block(self, *args, **kwargs)
-    except UnhighlightedError, ex:
-        msg = ex.args[0]
-        if 'warn' in kwargs:
-            kwargs['warn'](msg)
-
-        raise
-
-if sphinx_version_supported:
-    orig_unhiglighted = sphinx.highlighting.PygmentsBridge.unhighlighted
-    orig_highlight_block = sphinx.highlighting.PygmentsBridge.highlight_block
-
-    sphinx.highlighting.PygmentsBridge.unhighlighted = patched_unhighlighted
-    sphinx.highlighting.PygmentsBridge.highlight_block = patched_highlight_block
 else:
-    msg = textwrap.dedent("""\
-        WARNING: Your Sphinx version %s is too old and will not work with
-        monkey-patch for checking unhighlighted code.  Minimal required version
-        of Sphinx is %s.  Check disabled.
-        """) % (sphinx.__version__, required_sphinx_version)
-    sys.stderr.write(msg)
+    extensions.append('sphinxcontrib.spelling')
+    spelling_show_suggestions = True

@@ -12,16 +12,14 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-from future.utils import iteritems
-
 import datetime
 import os
 import signal
 import socket
 
+from future.utils import iteritems
 from twisted.application import internet
 from twisted.internet import defer
-from twisted.internet import reactor
 from twisted.internet import task
 from twisted.internet import threads
 from twisted.python import components
@@ -31,11 +29,9 @@ from zope.interface import implements
 
 import buildbot
 import buildbot.pbmanager
-
 from buildbot import config
 from buildbot import interfaces
 from buildbot import monkeypatches
-from buildbot.buildslave import manager as bslavemanager
 from buildbot.changes import changes
 from buildbot.changes.manager import ChangeManager
 from buildbot.data import connector as dataconnector
@@ -56,9 +52,9 @@ from buildbot.util import datetime2epoch
 from buildbot.util import service
 from buildbot.util.eventual import eventually
 from buildbot.wamp import connector as wampconnector
+from buildbot.worker import manager as workermanager
+from buildbot.worker_transition import WorkerAPICompatMixin
 from buildbot.www import service as wwwservice
-
-#
 
 
 class LogRotation(object):
@@ -68,7 +64,8 @@ class LogRotation(object):
         self.maxRotatedFiles = 10
 
 
-class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
+class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService,
+                  WorkerAPICompatMixin):
 
     # frequency with which to reclaim running builds; this should be set to
     # something fairly long, to avoid undue database load
@@ -78,8 +75,13 @@ class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
     # unclaimed; this should be at least 2 to avoid false positives
     UNCLAIMED_BUILD_FACTOR = 6
 
-    def __init__(self, basedir, configFileName="master.cfg", umask=None):
+    def __init__(self, basedir, configFileName=None, umask=None, reactor=None, config_loader=None):
         service.AsyncMultiService.__init__(self)
+
+        if reactor is None:
+            from twisted.internet import reactor
+        self.reactor = reactor
+
         self.setName("buildmaster")
 
         self.umask = umask
@@ -87,6 +89,16 @@ class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
         self.basedir = basedir
         if basedir is not None:  # None is used in tests
             assert os.path.isdir(self.basedir)
+
+        if config_loader is not None and configFileName is not None:
+            raise config.ConfigErrors([
+                "Can't specify both `config_loader` and `configFilename`.",
+            ])
+        elif config_loader is None:
+            if configFileName is None:
+                configFileName = 'master.cfg'
+            config_loader = config.FileLoader(self.basedir, configFileName)
+        self.config_loader = config_loader
         self.configFileName = configFileName
 
         # flag so we don't try to do fancy things before the master is ready
@@ -139,8 +151,8 @@ class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
         self.pbmanager = buildbot.pbmanager.PBManager()
         self.pbmanager.setServiceParent(self)
 
-        self.buildslaves = bslavemanager.BuildslaveManager(self)
-        self.buildslaves.setServiceParent(self)
+        self.workers = workermanager.WorkerManager(self)
+        self.workers.setServiceParent(self)
 
         self.change_svc = ChangeManager()
         self.change_svc.setServiceParent(self)
@@ -198,7 +210,7 @@ class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
     _already_started = False
 
     @defer.inlineCallbacks
-    def startService(self, _reactor=reactor):
+    def startService(self):
         assert not self._already_started, "can only start the master once"
         self._already_started = True
 
@@ -215,26 +227,29 @@ class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
         # we want to wait until the reactor is running, so we can call
         # reactor.stop() for fatal errors
         d = defer.Deferred()
-        _reactor.callWhenRunning(d.callback, None)
+        self.reactor.callWhenRunning(d.callback, None)
         yield d
 
+        startup_succeed = False
         try:
             # load the configuration file, treating errors as fatal
             try:
-                # run the master.cfg in thread, so that it can use blocking code
-                self.config = yield threads.deferToThread(
-                    config.MasterConfig.loadConfig, self.basedir, self.configFileName)
+                # run the master.cfg in thread, so that it can use blocking
+                # code
+                self.config = yield threads.deferToThreadPool(
+                    self.reactor, self.reactor.getThreadPool(),
+                    self.config_loader.loadConfig)
 
             except config.ConfigErrors as e:
                 log.msg("Configuration Errors:")
                 for msg in e.errors:
                     log.msg("  " + msg)
                 log.msg("Halting master.")
-                _reactor.stop()
+                self.reactor.stop()
                 return
             except Exception:
                 log.err(failure.Failure(), 'while starting BuildMaster')
-                _reactor.stop()
+                self.reactor.stop()
                 return
 
             # set up services that need access to the config before everything
@@ -243,7 +258,7 @@ class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
                 yield self.db.setup()
             except exceptions.DatabaseNotReadyError:
                 # (message was already logged)
-                _reactor.stop()
+                self.reactor.stop()
                 return
 
             self.mq.setup()
@@ -255,7 +270,7 @@ class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
 
             if hasattr(signal, "SIGUSR1"):
                 def sigusr1(*args):
-                    _reactor.callLater(0, self.botmaster.cleanShutdown)
+                    self.reactor.callLater(0, self.botmaster.cleanShutdown)
                 signal.signal(signal.SIGUSR1, sigusr1)
 
             # get the masterid so other services can use it in
@@ -280,16 +295,23 @@ class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
             yield self.data.updates.masterActive(
                 name=self.name,
                 masterid=self.masterid)
+
+            startup_succeed = True
         except Exception:
             f = failure.Failure()
             log.err(f, 'while starting BuildMaster')
-            _reactor.stop()
+            self.reactor.stop()
 
-        self._master_initialized = True
-        log.msg("BuildMaster is running")
+        finally:
+            if startup_succeed:
+                log.msg("BuildMaster is running")
+            else:
+                log.msg("BuildMaster startup failed")
+
+            self._master_initialized = True
 
     @defer.inlineCallbacks
-    def stopService(self, _reactor=reactor):
+    def stopService(self):
         if self.masterid is not None:
             yield self.data.updates.masterStopped(
                 name=self.name, masterid=self.masterid)
@@ -307,14 +329,14 @@ class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
             self.reconfig_requested = True
             return
 
-        self.reconfig_active = reactor.seconds()
+        self.reconfig_active = self.reactor.seconds()
         metrics.MetricCountEvent.log("loaded_config", 1)
 
         # notify every 10 seconds that the reconfig is still going on, although
         # reconfigs should not take that long!
         self.reconfig_notifier = task.LoopingCall(lambda:
                                                   log.msg("reconfig is ongoing for %d s" %
-                                                          (reactor.seconds() - self.reconfig_active)))
+                                                          (self.reactor.seconds() - self.reconfig_active)))
         self.reconfig_notifier.start(10, now=False)
 
         timer = metrics.Timer("BuildMaster.reconfig")
@@ -349,9 +371,9 @@ class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
         failed = False
         try:
             # Run the master.cfg in thread, so that it cas use blocking code
-            new_config = yield threads.deferToThread(config.MasterConfig.loadConfig,
-                                                     self.basedir,
-                                                     self.configFileName)
+            new_config = yield threads.deferToThreadPool(
+                self.reactor, self.reactor.getThreadPool(),
+                self.config_loader.loadConfig)
             changes_made = True
             self.config = new_config
 

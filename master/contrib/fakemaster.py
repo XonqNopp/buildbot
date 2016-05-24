@@ -18,11 +18,10 @@ from twisted.cred import checkers
 from twisted.cred import portal
 from twisted.internet import defer
 from twisted.internet import reactor
-from twisted.spread import pb
-from zope.interface import implements
-
 from twisted.internet import stdio
 from twisted.protocols import basic
+from twisted.spread import pb
+from zope.interface import implements
 
 from buildbot.process.buildstep import RemoteShellCommand
 from buildbot.util import service
@@ -104,7 +103,7 @@ class FakeBot(pb.Avatar):
 
     def runCommand(self, cmd):
         cmd = RemoteShellCommand(workdir='.', command=cmd)
-        cmd.buildslave = self
+        cmd.worker = self
         cmd.logs['stdio'] = FakeLog()
         cmd._closeWhenFinished['stdio'] = False
         d = cmd.run(self, self.builder)

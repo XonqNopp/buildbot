@@ -14,16 +14,15 @@
 # Copyright Buildbot Team Members
 from future.utils import iteritems
 from future.utils import itervalues
+from twisted.internet import defer
+from twisted.internet import reactor
+from twisted.python import failure
 
 from buildbot.data import connector
 from buildbot.db.buildrequests import AlreadyClaimedError
 from buildbot.test.util import validation
 from buildbot.util import json
 from buildbot.util import service
-
-from twisted.internet import defer
-from twisted.internet import reactor
-from twisted.python import failure
 
 
 class FakeUpdates(service.AsyncService):
@@ -36,7 +35,8 @@ class FakeUpdates(service.AsyncService):
 
         # test cases should assert the values here:
         self.changesAdded = []  # Changes are numbered starting at 1.
-        self.changesourceIds = {}  # { name : id }; users can add changesources here
+        # { name : id }; users can add changesources here
+        self.changesourceIds = {}
         self.buildsetsAdded = []  # Buildsets are numbered starting at 1
         self.maybeBuildsetCompleteCalls = 0
         self.masterStateChanges = []  # dictionaries
@@ -44,7 +44,7 @@ class FakeUpdates(service.AsyncService):
         self.builderIds = {}  # { name : id }; users can add schedulers here
         self.schedulerMasters = {}  # { schedulerid : masterid }
         self.changesourceMasters = {}  # { changesourceid : masterid }
-        self.buildslaveIds = {}  # { name : id }; users can add buildslaves here
+        self.workerIds = {}  # { name : id }; users can add workers here
         # { logid : {'finished': .., 'name': .., 'type': .., 'content': [ .. ]} }
         self.logs = {}
         self.claimedBuildRequests = set([])
@@ -222,7 +222,8 @@ class FakeUpdates(service.AsyncService):
         return defer.succeed(True)
 
     def unclaimExpiredRequests(self, old, _reactor=reactor):
-        validation.verifyType(self.testcase, "old", old, validation.IntValidator())
+        validation.verifyType(
+            self.testcase, "old", old, validation.IntValidator())
         return defer.succeed(None)
 
     def rebuildBuildrequest(self, buildrequest):
@@ -242,17 +243,22 @@ class FakeUpdates(service.AsyncService):
         return defer.succeed(None)
 
     def findSchedulerId(self, name):
+        return self.master.db.schedulers.findSchedulerId(name)
+
+    def forget_about_it(self, name):
         validation.verifyType(self.testcase, 'scheduler name', name,
                               validation.StringValidator())
         if name not in self.schedulerIds:
-            self.schedulerIds[name] = max([0] + list(itervalues(self.schedulerIds))) + 1
+            self.schedulerIds[name] = max(
+                [0] + list(itervalues(self.schedulerIds))) + 1
         return defer.succeed(self.schedulerIds[name])
 
     def findChangeSourceId(self, name):
         validation.verifyType(self.testcase, 'changesource name', name,
                               validation.StringValidator())
         if name not in self.changesourceIds:
-            self.changesourceIds[name] = max([0] + list(itervalues(self.changesourceIds))) + 1
+            self.changesourceIds[name] = max(
+                [0] + list(itervalues(self.changesourceIds))) + 1
         return defer.succeed(self.changesourceIds[name])
 
     def findBuilderId(self, name):
@@ -280,12 +286,12 @@ class FakeUpdates(service.AsyncService):
         self.changesourceMasters[changesourceid] = masterid
         return defer.succeed(True)
 
-    def addBuild(self, builderid, buildrequestid, buildslaveid):
+    def addBuild(self, builderid, buildrequestid, workerid):
         validation.verifyType(self.testcase, 'builderid', builderid,
                               validation.IntValidator())
         validation.verifyType(self.testcase, 'buildrequestid', buildrequestid,
                               validation.IntValidator())
-        validation.verifyType(self.testcase, 'buildslaveid', buildslaveid,
+        validation.verifyType(self.testcase, 'workerid', workerid,
                               validation.IntValidator())
         return defer.succeed((10, 1))
 
@@ -374,7 +380,8 @@ class FakeUpdates(service.AsyncService):
         validation.verifyType(self.testcase, 'type', type,
                               validation.IdentifierValidator(1))
         logid = max([0] + list(self.logs)) + 1
-        self.logs[logid] = dict(name=name, type=type, content=[], finished=False)
+        self.logs[logid] = dict(
+            name=name, type=type, content=[], finished=False)
         return defer.succeed(logid)
 
     def finishLog(self, logid):
@@ -397,32 +404,32 @@ class FakeUpdates(service.AsyncService):
         self.logs[logid]['content'].append(content)
         return defer.succeed(None)
 
-    def findBuildslaveId(self, name):
-        validation.verifyType(self.testcase, 'buildslave name', name,
+    def findWorkerId(self, name):
+        validation.verifyType(self.testcase, 'worker name', name,
                               validation.IdentifierValidator(50))
         # this needs to actually get inserted into the db (fake or real) since
-        # getBuildslave will get called later
-        return self.master.db.buildslaves.findBuildslaveId(name)
+        # getWorker will get called later
+        return self.master.db.workers.findWorkerId(name)
 
-    def buildslaveConnected(self, buildslaveid, masterid, slaveinfo):
-        return self.master.db.buildslaves.buildslaveConnected(
-            buildslaveid=buildslaveid,
+    def workerConnected(self, workerid, masterid, workerinfo):
+        return self.master.db.workers.workerConnected(
+            workerid=workerid,
             masterid=masterid,
-            slaveinfo=slaveinfo)
+            workerinfo=workerinfo)
 
-    def buildslaveConfigured(self, buildslaveid, masterid, builderids):
-        return self.master.db.buildslaves.buildslaveConfigured(
-            buildslaveid=buildslaveid,
+    def workerConfigured(self, workerid, masterid, builderids):
+        return self.master.db.workers.workerConfigured(
+            workerid=workerid,
             masterid=masterid,
             builderids=builderids)
 
-    def buildslaveDisconnected(self, buildslaveid, masterid):
-        return self.master.db.buildslaves.buildslaveDisconnected(
-            buildslaveid=buildslaveid,
+    def workerDisconnected(self, workerid, masterid):
+        return self.master.db.workers.workerDisconnected(
+            workerid=workerid,
             masterid=masterid)
 
-    def deconfigureAllBuidslavesForMaster(self, masterid):
-        return self.master.db.buildslaves.deconfigureAllBuidslavesForMaster(
+    def deconfigureAllWorkersForMaster(self, masterid):
+        return self.master.db.workers.deconfigureAllWorkersForMaster(
             masterid=masterid)
 
 

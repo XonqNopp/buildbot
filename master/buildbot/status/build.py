@@ -12,19 +12,15 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # Copyright Buildbot Team Members
-import os
 import re
-import shutil
 
-from buildbot import interfaces
-from buildbot import util
-from buildbot.util import pickle
 from twisted.internet import defer
 from twisted.internet import reactor
 from twisted.persisted import styles
-from twisted.python import log
-from twisted.python import runtime
 from zope.interface import implements
+
+from buildbot import interfaces
+from buildbot import util
 
 
 class BuildStatus(styles.Versioned):
@@ -43,7 +39,6 @@ class BuildStatus(styles.Versioned):
     currentStep = None
     text = []
     results = None
-    slavename = "???"
 
     # these lists/dicts are defined here so that unserialized instances have
     # (empty) values. They are set in __init__ to new objects to make sure
@@ -67,6 +62,7 @@ class BuildStatus(styles.Versioned):
         self.finishedWatchers = []
         self.steps = []
         self.testResults = {}
+        self.workername = "???"
 
     def __repr__(self):
         return "<%s #%s>" % (self.__class__.__name__, self.number)
@@ -154,8 +150,8 @@ class BuildStatus(styles.Versioned):
     def getResults(self):
         return self.results
 
-    def getSlavename(self):
-        return self.slavename
+    def getWorkername(self):
+        return self.workername
 
     def getTestResults(self):
         return self.testResults
@@ -222,8 +218,8 @@ class BuildStatus(styles.Versioned):
         # the world about us
         self.builder.buildStarted(self)
 
-    def setSlavename(self, slavename):
-        self.slavename = slavename
+    def setWorkername(self, workername):
+        self.workername = workername
 
     def setText(self, text):
         assert isinstance(text, (list, tuple))
@@ -367,26 +363,7 @@ class BuildStatus(styles.Versioned):
             s.checkLogfiles()
 
     def saveYourself(self):
-        filename = os.path.join(self.builder.basedir, "%d" % self.number)
-        if os.path.isdir(filename):
-            # leftover from 0.5.0, which stored builds in directories
-            shutil.rmtree(filename, ignore_errors=True)
-        tmpfilename = filename + ".tmp"
-        try:
-            with open(tmpfilename, "wb") as f:
-                pickle.dump(self, f, -1)
-            if runtime.platformType == 'win32':
-                # windows cannot rename a file on top of an existing one, so
-                # fall back to delete-first. There are ways this can fail and
-                # lose the builder's history, so we avoid using it in the
-                # general (non-windows) case
-                if os.path.exists(filename):
-                    os.unlink(filename)
-            os.rename(tmpfilename, filename)
-        except Exception:
-            log.msg("unable to save build %s-#%d" % (self.builder.name,
-                                                     self.number))
-            log.err()
+        return
 
     def asDict(self):
         result = {}
@@ -401,7 +378,7 @@ class BuildStatus(styles.Versioned):
         result['times'] = self.getTimes()
         result['text'] = self.getText()
         result['results'] = self.getResults()
-        result['slave'] = self.getSlavename()
+        result['worker'] = self.getWorkername()
         # TODO(maruel): Add.
         # result['test_results'] = self.getTestResults()
         result['logs'] = [[l.getName(),

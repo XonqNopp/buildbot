@@ -23,8 +23,8 @@ The sources for properties are:
     This is most commonly used with the :bb:cmdline:`sendchange` command.
 forced builds
     The "Force Build" form allows users to specify properties
-:bb:cfg:`buildslaves <slaves>`
-    A buildslave can pass properties on to the builds it performs.
+:bb:cfg:`workers <workers>`
+    A worker can pass properties on to the builds it performs.
 :ref:`builds <Common-Build-Properties>`
     A build automatically sets a number of properties on itself.
 :bb:cfg:`builders <builders>`
@@ -72,20 +72,20 @@ The following build properties are set when the build is started, and are availa
     Each build gets a number, scoped to the :class:`Builder` (so the first build performed on any given :class:`Builder` will have a build number of 0).
     This integer property contains the build's number.
 
-.. index:: single: Properties; slavename
+.. index:: single: Properties; workername
 
-``slavename``
-    This is a string which identifies which buildslave the build is running on.
+``workername``
+    This is a string which identifies which worker the build is running on.
 
 .. index:: single: Properties; scheduler
 
 ``scheduler``
     If the build was started from a scheduler, then this property will contain the name of that scheduler.
 
-``workdir``
-    The absolute path of the base working directory on the slave, of the current builder.
+``builddir``
+    The absolute path of the base working directory on the worker, of the current builder.
 
-.. index:: single: Properties; workdir
+.. index:: single: Properties; builddir
 
 For single codebase builds, where the codebase is `''`, the following :ref:`Source-Stamp-Attributes` are also available as properties: ``branch``, ``revision``, ``repository``, and ``project`` .
 
@@ -277,6 +277,8 @@ For example::
 
 You can think of ``renderer`` as saying "call this function when the step starts".
 
+Note: Config errors with Renderables may not always be caught via checkconfig
+
 .. index:: single: Properties; Transform
 
 .. _Transform:
@@ -291,7 +293,7 @@ While ``renderer`` is useful for creating new renderables, ``Transform`` is easi
 The function must either be a callable object or a renderable producing one.
 When rendered, a ``Transform`` first replaces all of its arguments that are renderables with their renderings, then calls the function, passing it the positional and keyword arguments, and returns the result as its own rendering.
 
-For example, suppose ``my_path`` is a path on the buildslave, and you want to get it relative to the build directory.
+For example, suppose ``my_path`` is a path on the worker, and you want to get it relative to the build directory.
 You can do it like this::
 
     import os.path
@@ -416,3 +418,16 @@ This is equivalent to::
     ShellCommand(command=['make', Interpolate('TIME=%(kw:now)s', now=now)])
 
 Note that a custom renderable must be instantiated (and its constructor can take whatever arguments you'd like), whereas a function decorated with :func:`renderer` can be used directly.
+
+
+.. _URLForBuild:
+
+URL for build
++++++++++++++
+
+Its common to need to use the URL for the build in a step.
+For this you can use a special custom renderer as following::
+
+    from buildbot.plugins import *
+
+    ShellCommand(command=['make', Interpolate('BUILDURL=%(kw:url)s', url=util.URLForBuild)])

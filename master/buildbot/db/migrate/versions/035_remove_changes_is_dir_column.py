@@ -14,10 +14,9 @@
 # Copyright Buildbot Team Members
 
 import sqlalchemy as sa
+from migrate import changeset
 
 from buildbot.util import sautils
-
-from migrate import changeset
 
 
 def upgrade(migrate_engine):
@@ -29,7 +28,8 @@ def upgrade(migrate_engine):
                   sa.Column('ss_hash', sa.String(40), nullable=False),
                   sa.Column('branch', sa.String(256)),
                   sa.Column('revision', sa.String(256)),
-                  sa.Column('patchid', sa.Integer, sa.ForeignKey('patches.id')),
+                  sa.Column(
+                      'patchid', sa.Integer, sa.ForeignKey('patches.id')),
                   sa.Column('repository', sa.String(length=512), nullable=False,
                             server_default=''),
                   sa.Column('codebase', sa.String(256), nullable=False,
@@ -40,13 +40,17 @@ def upgrade(migrate_engine):
 
     # Specify what the new table should look like
     changes = sautils.Table('changes', metadata,
-                            sa.Column('changeid', sa.Integer, primary_key=True),
-                            sa.Column('author', sa.String(256), nullable=False),
-                            sa.Column('comments', sa.String(1024), nullable=False),
+                            sa.Column(
+                                'changeid', sa.Integer, primary_key=True),
+                            sa.Column(
+                                'author', sa.String(256), nullable=False),
+                            sa.Column(
+                                'comments', sa.String(1024), nullable=False),
                             sa.Column('branch', sa.String(256)),
                             sa.Column('revision', sa.String(256)),
                             sa.Column('revlink', sa.String(256)),
-                            sa.Column('when_timestamp', sa.Integer, nullable=False),
+                            sa.Column(
+                                'when_timestamp', sa.Integer, nullable=False),
                             sa.Column('category', sa.String(256)),
                             sa.Column('repository', sa.String(length=512), nullable=False,
                                       server_default=''),

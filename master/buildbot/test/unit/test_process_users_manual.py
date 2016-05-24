@@ -17,7 +17,6 @@
 # no current implementation utilizes it aside from scripts.runner.
 
 import mock
-
 from twisted.internet import defer
 from twisted.trial import unittest
 
@@ -261,7 +260,8 @@ class TestCommandlineUserManagerPerspective(unittest.TestCase, ManualUsersMixin)
         return d
 
     def test_perspective_commandline_remove_no_match_format(self):
-        d = self.call_perspective_commandline('remove', None, None, ['x'], None)
+        d = self.call_perspective_commandline(
+            'remove', None, None, ['x'], None)
 
         def check(result):
             exp_format = "user(s) removed:\n"
@@ -314,6 +314,7 @@ class TestCommandlineUserManager(unittest.TestCase, ManualUsersMixin):
         self.manual_component.startService()
 
         persp = self.got_factory(mock.Mock(), 'user')
-        self.failUnless(isinstance(persp, manual.CommandlineUserManagerPerspective))
+        self.failUnless(
+            isinstance(persp, manual.CommandlineUserManagerPerspective))
 
         return self.manual_component.stopService()

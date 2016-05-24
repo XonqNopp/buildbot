@@ -74,7 +74,7 @@ This server is configured with the ``www`` configuration key, which specifies a 
 
 ``versions``
     Custom component versions that you'd like to display on the About page.
-    Buildbot will automatically prepend the versions of python, twisted and buildbot itself to the list.
+    Buildbot will automatically prepend the versions of Python, twisted and buildbot itself to the list.
 
     ``versions`` should be a list of tuples. for example::
 
@@ -92,7 +92,7 @@ This server is configured with the ``www`` configuration key, which specifies a 
     This directory will be parsed for custom angularJS templates to replace the one of the original website templates.
     if the directory string is relative, it will be joined to the master's basedir.
     Either ``*.jade`` files or ``*.html`` files can be used, and will be used to override ``views/<filename>.html`` templates in the angularjs templateCache.
-    Unlike with the regular nodejs based angularjs build system, python only jade interpreter is used to parse the jade templates.
+    Unlike with the regular nodejs based angularjs build system, Python only jade interpreter is used to parse the jade templates.
     ``pip install pyjade`` is be required to use jade templates.
     You can also override plugin's directives, but they have to be in another directory.
 
@@ -184,7 +184,7 @@ The available classes are described here:
             'auth': util.GoogleAuth("clientid", "clientsecret"),
         }
 
-    in order to use this module, you need to install the python ``requests`` module
+    in order to use this module, you need to install the Python ``requests`` module
 
     .. code-block:: bash
 
@@ -211,6 +211,27 @@ The available classes are described here:
         }
 
 .. _GitHub: http://developer.github.com/v3/oauth_authorizations/
+
+.. py:class:: buildbot.www.oauth2.GitLabAuth(instanceUri, clientId, clientSecret)
+
+    :param instanceUri: The URI of your GitLab instance
+    :param clientId: The client ID of your buildbot application
+    :param clientSecret: The client secret of your buildbot application
+
+    This class implements an authentication with GitLab_ single sign-on.
+    It functions almost identically to the :py:class:`~buildbot.www.oauth2.GoogleAuth` class.
+
+    Register your Buildbot instance with the ``BUILDBOT_URL/auth/login`` url as the allowed redirect URI.
+
+    Example::
+
+        from buildbot.plugins import util
+        c['www'] = {
+            # ...
+            'auth': util.GitLabAuth("https://gitlab.com", "clientid", clientsecret"),
+        }
+
+.. _GitLab: http://doc.gitlab.com/ce/integration/oauth_provider.html
 
 .. py:class:: buildbot.www.auth.RemoteUserAuth
 
@@ -281,19 +302,19 @@ In this case the username provided by oauth2 will be used, and all other informa
 
 Currently only one provider is available:
 
-.. py:class:: buildbot.ldapuserinfos.LdapUserInfo(uri, bindUser, bindPw, accountBase, groupBase, accountPattern, groupMemberPattern, accountFullName, accountEmail, groupName, avatarPattern, avatarData, accountExtraFields)
+.. py:class:: buildbot.ldapuserinfo.LdapUserInfo(uri, bindUser, bindPw, accountBase, accountPattern, groupBase=None, groupMemberPattern=None, groupName=None, accountFullName, accountEmail, avatarPattern=None, avatarData=None, accountExtraFields=None)
 
         :param uri: uri of the ldap server
-        :param bind_user: username of the ldap account that is used to get the infos for other users (usually a "faceless" account)
-        :param bind_pw: password of the ``bindUser``
+        :param bindUser: username of the ldap account that is used to get the infos for other users (usually a "faceless" account)
+        :param bindPw: password of the ``bindUser``
         :param accountBase: the base dn (distinguished name)of the user database
-        :param groupBase: the base dn of the groups database
         :param accountPattern: the pattern for searching in the account database.
                                This must contain the ``%(username)s`` string, which is replaced by the searched username
-        :param groupMemberPattern: the pattern for searching in the group database.
-                                   This must contain the ``%(dn)s`` string, which is replaced by the searched username's dn
         :param accountFullName: the name of the field in account ldap database where the full user name is to be found.
         :param accountEmail: the name of the field in account ldap database where the user email is to be found.
+        :param groupBase: the base dn of the groups database.
+        :param groupMemberPattern: the pattern for searching in the group database.
+                                   This must contain the ``%(dn)s`` string, which is replaced by the searched username's dn
         :param groupName: the name of the field in groups ldap database where the group name is to be found.
         :param avatarPattern: the pattern for searching avatars from emails in the account database.
                               This must contain the ``%(email)s`` string, which is replaced by the searched email
@@ -301,7 +322,9 @@ Currently only one provider is available:
                            This field is supposed to contain the raw picture, format is automatically detected from jpeg, png or git.
         :param accountExtraFields: extra fields to extracts for use with the authorization policies.
 
-        Example::
+        If one of the three optional groups parameters is supplied, then all of them become mandatory. If none is supplied, the retrieved user info has an empty list of groups.
+
+     Example::
 
             from buildbot.plugins import util
 
@@ -309,8 +332,8 @@ Currently only one provider is available:
             # we use it for user info, and avatars
             userInfoProvider = util.LdapUserInfo(
                 uri='ldap://ldap.mycompany.com:3268',
-                bind_user='ldap_user',
-                bind_pw='p4$$wd',
+                bindUser='ldap_user',
+                bindPw='p4$$wd',
                 accountBase='dc=corp,dc=mycompany,dc=com',
                 groupBase='dc=corp,dc=mycompany,dc=com',
                 accountPattern='(&(objectClass=person)(sAMAccountName=%(username)s))',
@@ -323,7 +346,7 @@ Currently only one provider is available:
             )
             c['www'] = dict(port=PORT, allowed_origins=["*"],
                             url=c['buildbotURL'],
-                            auth=util.RemoteUserAuth(userInfoProvider),
+                            auth=util.RemoteUserAuth(userInfoProvider=userInfoProvider),
                             avatar_methods=[userInfoProvider,
                                             util.AvatarGravatar()])
 
@@ -466,7 +489,7 @@ You can grant roles from groups information provided by the Auth plugins, or if 
     :param groupPrefix: prefix to remove from each group
 
     RolesFromGroups grants roles from the groups of the user.
-    If a user has group 'buildbot-admin', and groupPrefix is 'buildbot-', then user will be granted the role 'admin'
+    If a user has group ``buildbot-admin``, and groupPrefix is ``buildbot-``, then user will be granted the role 'admin'
 
     ex::
 
